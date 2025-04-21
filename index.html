@@ -1,75 +1,87 @@
-<!-- lobby.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Ping Pong Lobby</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.2.0/css/bootstrap.min.css">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link
+    href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.2.0/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
   <script src="firebase.js"></script>
   <style>
-    body { background:#222; color:#fff; }
-    .room { cursor:pointer; }
+    body { background:#222; color:#fff; padding:2rem; }
+    .room { margin-bottom:2rem; }
     .room .card { background:#333; }
+    .btn-room { margin-right:0.5rem; margin-top:1rem; }
   </style>
 </head>
-<body class="p-4">
+<body>
   <h1 class="mb-4">Ping Pong Lobby</h1>
-  <div class="row g-4">
-    <div class="col-md-6 room" data-room="masa1">
-      <div class="card p-3">
-        <h3>Table 1</h3>
-        <p>Players: <span id="masa1-players">0</span>/2</p>
-        <p>Time: <span id="masa1-time">0</span> min</p>
-      </div>
-    </div>
-    <div class="col-md-6 room" data-room="masa2">
-      <div class="card p-3">
-        <h3>Table 2</h3>
-        <p>Players: <span id="masa2-players">0</span>/2</p>
-        <p>Time: <span id="masa2-time">0</span> min</p>
-      </div>
-    </div>
+
+  <div id="rooms" class="row gy-4">
+    <!-- rooms will be injected here -->
   </div>
 
-  <script>
-    const db = firebase.database()
-    const rooms = ['masa1','masa2']
+<script>
+  // --- CONFIGURE YOUR ROOMS HERE ---
+  const roomList = ['masa1','masa2'];
 
-    rooms.forEach(r=>{
-      const ref = db.ref('rooms/'+r)
-      // on player count
-      ref.child('players').on('value',snap=>{
-        document.getElementById(r+'-players').textContent = snap.numChildren()
-      })
-      // on creation timestamp
-      ref.child('createdAt').once('value',snap=>{
-        if(!snap.exists()) {
-          ref.child('createdAt').set(Date.now())
-          document.getElementById(r+'-time').textContent = '0'
-        }
-      })
-      // update elapsed time every minute
-      setInterval(async()=>{
-        const { createdAt } = (await ref.child('createdAt').get()).val()||{}
-        if(createdAt) {
-          let mins = Math.floor((Date.now()-createdAt)/60000)
-          document.getElementById(r+'-time').textContent = mins
-        }
-      },60000)
-    })
+  const db = firebase.database();
+  const container = document.getElementById('rooms');
 
-    document.querySelectorAll('.room').forEach(el=>{
-      el.onclick = ()=>{
-        const room = el.dataset.room
-        // prompt role
-        let role = prompt('Choose role: player1, player2 or viewer','viewer')
-        if(!['player1','player2','viewer'].includes(role)) role='viewer'
-        window.location = `game.html?room=${room}&role=${role}`
-      }
-    })
-  </script>
+  roomList.forEach(room => {
+    // build the card
+    const col = document.createElement('div');
+    col.className = 'col-md-6 room';
+    col.innerHTML = `
+      <div class="card p-3">
+        <h3>Table ${room.replace('masa','')}</h3>
+        <p>Player 1: <span id="${room}-p1">––</span></p>
+        <p>Player 2: <span id="${room}-p2">––</span></p>
+        <div>
+          <button id="${room}-btn-p1" class="btn btn-sm btn-primary btn-room">Join as Player 1</button>
+          <button id="${room}-btn-p2" class="btn btn-sm btn-secondary btn-room">Join as Player 2</button>
+          <button id="${room}-btn-vw" class="btn btn-sm btn-light btn-room text-dark">Join as Viewer</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(col);
+
+    const p1Label = document.getElementById(`${room}-p1`);
+    const p2Label = document.getElementById(`${room}-p2`);
+    const btnP1   = document.getElementById(`${room}-btn-p1`);
+    const btnP2   = document.getElementById(`${room}-btn-p2`);
+    const btnVW   = document.getElementById(`${room}-btn-vw`);
+    const roomRef = db.ref('rooms/'+room+'/players');
+
+    // watch player slots
+    roomRef.on('value', snap => {
+      const players = snap.val()||{};
+      // show who is in or empty
+      p1Label.textContent = players.player1 ? '✔ joined' : '––';
+      p2Label.textContent = players.player2 ? '✔ joined' : '––';
+      // disable buttons if taken
+      btnP1.disabled = !!players.player1;
+      btnP2.disabled = !!players.player2;
+    });
+
+    // click handlers
+    btnP1.onclick = () => {
+      roomRef.child('player1').set({ joined: Date.now() })
+        .then(()=> window.location = `game.html?room=${room}&role=player1`);
+    };
+    btnP2.onclick = () => {
+      roomRef.child('player2').set({ joined: Date.now() })
+        .then(()=> window.location = `game.html?room=${room}&role=player2`);
+    };
+    btnVW.onclick = () => {
+      // viewers don't occupy slots
+      window.location = `viewer.html?room=${room}`;
+    };
+  });
+</script>
 </body>
 </html>

@@ -1,143 +1,240 @@
-<!-- game.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <title>Ping Pong Game</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body { margin:0; overflow:hidden; background:#000; }
-    #arena { position:relative; margin:auto; top:0; left:0; right:0; bottom:0;
-      width:800px; height:500px; border:2px solid #fff;
-    }
-    .paddle, #ball { position:absolute; background:#fff; }
-    .paddle { width:12px; height:80px; }
-    #ball { width:15px; height:15px; border-radius:50%; }
-    #score { position:absolute; top:10px; width:100%; text-align:center; color:#fff; font:20px sans-serif; }
-    #ready { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-      color:#fff; font:18px sans-serif; background:rgba(0,0,0,0.7); padding:1em; display:none;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ping Pong JS</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+    rel="stylesheet"
+  />
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
-  <script src="firebase.js"></script>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:'Press Start 2P',monospace; }
+    header { display:flex; justify-content:space-between; padding:1rem; }
+    .arena { position:fixed; top:50%; left:50%; width:900px; height:600px;
+             margin:-300px 0 0 -450px; background:#333; border:3px dashed #fff; }
+    .player-left-paddle, .player-right-paddle, .ping-pong-ball {
+      position:absolute; background:#fff;
+    }
+    .player-left-paddle { width:12px; height:85px; left:0; }
+    .player-right-paddle { width:12px; height:85px; right:0; }
+    .ping-pong-ball { width:15px; height:15px; border-radius:50%; }
+    .dialog {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.8); display:flex; align-items:center;
+      justify-content:center; z-index:10; color:#fff; text-align:center;
+    }
+    .dialog.hide { display:none; }
+    .dialog button { margin-top:1rem; padding:.5rem 1rem; }
+    footer { position:fixed; bottom:0; width:100%; text-align:center; font-size:.75rem; }
+  </style>
 </head>
 <body>
-  <div id="arena">
-    <canvas id="canvas" width="800" height="500"></canvas>
-    <div id="score">0 : 0</div>
-    <button id="ready">Waiting for both players...</button>
+  <header>
+    <div>Player 1: <span id="score1">0</span></div>
+    <h1>Ping Pong</h1>
+    <div>Player 2: <span id="score2">0</span></div>
+  </header>
+
+  <div class="arena">
+    <div id="paddle1" class="player-left-paddle"></div>
+    <div id="ball" class="ping-pong-ball"></div>
+    <div id="paddle2" class="player-right-paddle"></div>
   </div>
+
+  <div id="dialog" class="dialog">
+    <div>
+      <p id="dialogText">Press READY when you’re set</p>
+      <button id="readyBtn">READY</button>
+    </div>
+  </div>
+
+  <footer>
+    Controls: Player 1 = W/S &nbsp;|&nbsp; Player 2 = ↑/↓ &nbsp;|&nbsp;
+    Refresh = R
+  </footer>
+
   <script>
-  (async()=>{
-    // parse params
-    const params=new URLSearchParams(location.search)
-    const room=params.get('room')||'masa1'
-    const role=params.get('role')||'viewer'
+  // ← Firebase init (same config as index.html)
+  const firebaseConfig = {
+    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+    authDomain: "masa-tenisi-v1.firebaseapp.com",
+    databaseURL:
+      "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "masa-tenisi-v1",
+    storageBucket: "masa-tenisi-v1.appspot.com",
+    messagingSenderId: "186015084983",
+    appId: "1:186015084983:web:86f9d88e907423f5e33832",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
-    const dbRef = firebase.database().ref('rooms/'+room)
-    // if first time: set up
-    await dbRef.child('init').once('value',snap=>{
-      if(!snap.exists()) {
-        dbRef.set({
-          init:true,
-          createdAt:Date.now(),
-          ready:{player1:false,player2:false},
-          players:{},
-          ball:{ x:392,y:242,vx:4,vy:2 },
-          score:{p1:0,p2:0}
-        })
-      }
-    })
+  // read URL params:
+  const params = new URLSearchParams(location.search);
+  const room = params.get("room");
+  const role = params.get("role");            // "player1" or "player2"
+  const isMaster = role === "player1";        // we'll let p1 drive the ball
 
-    // register self
-    if(role==='player1'||role==='player2') {
-      dbRef.child('players/'+role).set({ joined:Date.now() })
+  // DB refs:
+  const rootRef   = db.ref(`rooms/${room}`);
+  const playersRef= rootRef.child("players");
+  const readyRef  = rootRef.child("ready");
+  const paddlesRef= rootRef.child("paddles");
+  const ballRef   = rootRef.child("ball");
+  const scoreRef  = rootRef.child("scores");
+
+  // on unload: clean up your slot & ready flag
+  window.addEventListener("beforeunload", () => {
+    playersRef.child(role).remove();
+    readyRef.child(role).remove();
+    paddlesRef.child(role).remove();
+  });
+
+  // --- DIALOG & READY FLOW ---
+  const dialog   = document.getElementById("dialog");
+  const readyBtn = document.getElementById("readyBtn");
+  const dialogText = document.getElementById("dialogText");
+
+  let amReady = false;
+  readyBtn.onclick = () => {
+    readyRef.child(role).set(true);
+    amReady = true;
+    readyBtn.disabled = true;
+    dialogText.textContent = "Waiting for opponent…";
+  };
+
+  // once both ready → start
+  readyRef.on("value", snap => {
+    const r = snap.val() || {};
+    const count = Object.keys(r).length;
+    if (!amReady) {
+      dialogText.textContent = `Ready: ${count}/2`;
     }
-
-    const canvas=document.getElementById('canvas')
-    const ctx=canvas.getContext('2d')
-    const paddleW=12,paddleH=80
-    let myPaddleY=210
-
-    // UI ready button
-    const readyBtn=document.getElementById('ready')
-    readyBtn.style.display='block'
-    readyBtn.onclick=()=> {
-      dbRef.child('ready/'+role).set(true)
+    if (r.player1 && r.player2) {
+      dialog.classList.add("hide");
+      if (isMaster) initMasterLoop();
+      initLocalLoop();
     }
+  });
 
-    // wait both ready
-    dbRef.child('ready').on('value',snap=>{
-      const r=snap.val()
-      if(r.player1 && r.player2) {
-        readyBtn.style.display='none'
-        startLoop()
+  // --- GAME STATE & DOM ---
+  const arenaW = 900, arenaH = 600;
+  const pw = 12, ph = 85, br = 15;
+  const winScore = 5;
+
+  let paddleY = (arenaH/2 - ph/2);
+  let speed  = 0;
+  let ball = { x: arenaW/2 - br/2, y: arenaH/2 - br/2, vx:0, vy:0 };
+  let scores = { player1:0, player2:0 };
+
+  // grab elements
+  const p1El  = document.getElementById("paddle1");
+  const p2El  = document.getElementById("paddle2");
+  const ballEl= document.getElementById("ball");
+  const s1El  = document.getElementById("score1");
+  const s2El  = document.getElementById("score2");
+
+  // listen for remote paddles + ball + scores
+  paddlesRef.on("value", snap => {
+    const ps = snap.val() || {};
+    if (ps.player1 != null) p1El.style.top = ps.player1 + "px";
+    if (ps.player2 != null) p2El.style.top = ps.player2 + "px";
+  });
+  ballRef.on("value", snap => {
+    const b = snap.val();
+    if (b) {
+      ballEl.style.left = b.x + "px";
+      ballEl.style.top  = b.y + "px";
+    }
+  });
+  scoreRef.on("value", snap => {
+    const sc = snap.val() || {};
+    scores = sc;
+    s1El.textContent = sc.player1 || 0;
+    s2El.textContent = sc.player2 || 0;
+    if (sc.player1 === winScore || sc.player2 === winScore) {
+      alert((sc.player1===winScore?"Player 1":"Player 2")+" wins!");
+      location.reload();
+    }
+  });
+
+  // keyboard
+  document.addEventListener("keydown", e => {
+    if (role==="player1") {
+      if (e.key==="w") speed = -10;
+      if (e.key==="s") speed = +10;
+    }
+    if (role==="player2") {
+      if (e.key==="ArrowUp") speed = -10;
+      if (e.key==="ArrowDown") speed = +10;
+    }
+    if (e.key==="r") location.reload();
+  });
+  document.addEventListener("keyup", e => { speed = 0; });
+
+  // local paddle loop
+  function initLocalLoop(){
+    setInterval(()=>{
+      if (speed!==0){
+        paddleY += speed;
+        paddleY = Math.max(0, Math.min(arenaH-ph, paddleY));
+        paddlesRef.child(role).set(paddleY);
       }
-    })
+    }, 50);
+  }
 
-    function draw(state){
-      ctx.clearRect(0,0,800,500)
-      // center line
-      ctx.strokeStyle='#555';ctx.setLineDash([5,5])
-      ctx.beginPath();ctx.moveTo(400,0);ctx.lineTo(400,500);ctx.stroke()
-      ctx.setLineDash([])
+  // only player1 drives the ball physics
+  function initMasterLoop(){
+    // init scores in DB once
+    scoreRef.set({player1:0, player2:0});
+    spawnBall();
+
+    setInterval(() => {
+      // move
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+      // wall bounce
+      if (ball.y<0 || ball.y>arenaH-br) ball.vy *= -1;
       // paddles
-      ctx.fillStyle='#fff'
-      ctx.fillRect(0,state.p1Y,paddleW,paddleH)
-      ctx.fillRect(800-paddleW,state.p2Y,paddleW,paddleH)
-      // ball
-      ctx.beginPath();ctx.arc(state.ball.x,state.ball.y,7,0,2*Math.PI);ctx.fill()
-      // score
-      document.getElementById('score').textContent=state.score.p1+' : '+state.score.p2
-    }
-
-    // listen full state
-    dbRef.on('value',snap=>{
-      const val=snap.val()
-      const state={
-        p1Y:(val.players.player1?.y||210),
-        p2Y:(val.players.player2?.y||210),
-        ball:val.ball,
-        score:val.score
-      }
-      draw(state)
-    })
-
-    function startLoop(){
-      if(role==='player1'||role==='player2'){
-        // mouse move => update own paddle Y
-        canvas.onmousemove=e=>{
-          let rect=canvas.getBoundingClientRect()
-          myPaddleY = Math.max(0,Math.min(500-paddleH,e.clientY-rect.top-paddleH/2))
-          dbRef.child('players/'+role+'/y').set(myPaddleY)
+      paddlesRef.once("value", snap => {
+        const ps = snap.val()||{};
+        // left
+        if (ball.x < pw+br) {
+          if (ball.y > (ps.player1||-999) && ball.y < (ps.player1||0)+ph) {
+            ball.vx *= -1;
+          } else {
+            scores.player2++;
+            scoreRef.set(scores);
+            if (scores.player2<winScore) spawnBall(); return;
+          }
         }
-      }
-      // only player1 does physics
-      if(role==='player1'){
-        setInterval(async()=>{
-          const snap = await dbRef.child('ball').get()
-          let b=snap.val()
-          // move
-          b.x+=b.vx; b.y+=b.vy
-          // bounce
-          if(b.y<0||b.y>500) b.vy*=-1
-          // check paddles
-          const p1=(await dbRef.child('players/player1/y').get()).val()||210
-          const p2=(await dbRef.child('players/player2/y').get()).val()||210
-          // left paddle
-          if(b.x<12 && b.y>p1 && b.y<p1+paddleH) b.vx*=-1
-          // right paddle
-          if(b.x>800-12 && b.y>p2 && b.y<p2+paddleH) b.vx*=-1
-          // score
-          if(b.x<0){ await dbRef.child('score/p2').transaction(c=>c+1); b.x=392; }
-          if(b.x>800){ await dbRef.child('score/p1').transaction(c=>c+1); b.x=392; }
-          // write back
-          dbRef.child('ball').set(b)
-        },16)
-      }
-    }
-  })()
+        // right
+        if (ball.x > arenaW-pw-br) {
+          if (ball.y > (ps.player2||-999) && ball.y < (ps.player2||0)+ph) {
+            ball.vx *= -1;
+          } else {
+            scores.player1++;
+            scoreRef.set(scores);
+            if (scores.player1<winScore) spawnBall(); return;
+          }
+        }
+
+        // push update
+        ballRef.set({ x:ball.x, y:ball.y, vx:ball.vx, vy:ball.vy });
+      });
+    }, 50);
+  }
+
+  function spawnBall(){
+    ball.x = arenaW/2 - br/2;
+    ball.y = arenaH/2 - br/2;
+    // random dir
+    const dir = Math.random()<0.5?1:-1;
+    ball.vx = dir*8; ball.vy = 6*(Math.random()<0.5?1:-1);
+    ballRef.set({ x:ball.x, y:ball.y, vx:ball.vx, vy:ball.vy });
+  }
   </script>
 </body>
 </html>

@@ -1,61 +1,47 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong Spectator</title>
-  <style> /* game.html ile aynı stil */ 
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
-    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
-      header div{font-size:1.2rem;}
-      .heading{font-size:1.5rem;}
-    .arena {
-      position:relative;
-      width:900px; height:600px;
-      margin:2rem auto;
-      background:#222; border:3px dashed #0ff;
-      overflow:hidden;
+  <meta charset="UTF-8">
+  <title>Ping Pong Viewer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#000;color:#fff;font-family:sans-serif;overflow:hidden;}
+    header{display:flex;justify-content:space-between;padding:1rem;}
+    .arena{position:relative;margin:auto;width:900px;height:600px;border:3px dashed #fff;}
+    .paddle{position:absolute;width:12px;height:85px;background:#fff;}
+    #paddle1{left:0;} #paddle2{right:0;}
+    .ball{position:absolute;width:15px;height:15px;border-radius:50%;background:#fff;}
+    @media(max-width:950px){.arena{width:100%;}}
+    /* toast */
+    #toast {
+      position:fixed;bottom:20px;right:20px;
+      background:rgba(0,0,0,0.8);color:#fff;
+      padding:1rem 1.5rem;border-radius:5px;
+      opacity:0;transition:opacity .4s;
     }
-    .player-left-paddle, .player-right-paddle, .ping-pong-ball{
-      position:absolute;
-      border-radius:4px;
-    }
-    .player-left-paddle {
-      width:12px; height:85px;
-      left:0; background:#0ff;
-    }
-    .player-right-paddle {
-      width:12px; height:85px;
-      right:0; background:#f0f;
-    }
-    .ping-pong-ball {
-      width:15px; height:15px;
-      background:#ff0;
-      box-shadow:0 0 8px #ff0;
-      margin:-7.5px;
-    }
+    #toast.show{opacity:1;}
   </style>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 </head>
 <body>
   <header>
-    <div>Player 1: <span id="score1">0</span></div>
-    <div class="heading">Spectator View</div>
-    <div>Player 2: <span id="score2">0</span></div>
+    <div>P1: <strong id="score1">0</strong></div>
+    <div style="font-family:monospace;">Ping Pong Viewer</div>
+    <div>P2: <strong id="score2">0</strong></div>
   </header>
   <div class="arena" id="arena">
-    <div id="paddle1" class="player-left-paddle"></div>
-    <div id="ball"    class="ping-pong-ball"></div>
-    <div id="paddle2" class="player-right-paddle"></div>
+    <div class="paddle" id="paddle1"></div>
+    <div class="paddle" id="paddle2"></div>
+    <div class="ball"   id="ball"></div>
   </div>
+  <div id="toast"></div>
 
   <script>
-    const ps = new URLSearchParams(location.search);
-    const room = ps.get('room');
-
-    // Firebase init (aynı config)
+  (function(){
+    // Firebase init
     const firebaseConfig = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
@@ -67,29 +53,36 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const paddlesRef = db.ref(`rooms/${room}/paddles`);
-    const ballRef    = db.ref(`rooms/${room}/ball`);
-    const scoreRef   = db.ref(`rooms/${room}/score`);
 
-    const arenaH=600, padH=85;
-    let paddle={player1:(arenaH-padH)/2,player2:(arenaH-padH)/2};
-    let ball={x:450,y:300}, score={p1:0,p2:0};
+    const params = new URLSearchParams(location.search);
+    const room = params.get('room')||'main';
 
-    paddlesRef.child('player1').on('value',s=>{ if(s.exists()) paddle.player1=s.val(); render(); });
-    paddlesRef.child('player2').on('value',s=>{ if(s.exists()) paddle.player2=s.val(); render(); });
-    ballRef.on('value',       s=>{ if(s.exists()) ball=s.val(); render(); });
-    scoreRef.on('value',      s=>{ if(s.exists()){
-      score=s.val();
-      document.getElementById('score1').textContent=score.p1;
-      document.getElementById('score2').textContent=score.p2;
-    }});
+    // DOM
+    const P1= document.getElementById('paddle1'),
+          P2= document.getElementById('paddle2'),
+          B = document.getElementById('ball'),
+          S1= document.getElementById('score1'),
+          S2= document.getElementById('score2'),
+          toast = document.getElementById('toast');
 
-    function render(){
-      document.getElementById('paddle1').style.top  = paddle.player1+'px';
-      document.getElementById('paddle2').style.top  = paddle.player2+'px';
-      document.getElementById('ball').style.left    = ball.x+'px';
-      document.getElementById('ball').style.top     = ball.y+'px';
+    function showToast(msg){
+      toast.textContent=msg;
+      toast.classList.add('show');
+      setTimeout(()=>toast.classList.remove('show'),2000);
     }
+
+    // render loop
+    db.ref(`rooms/${room}`).on('value', snap=>{
+      const st=snap.val();
+      if(!st) return;
+      P1.style.top=st.p1 + 'px';
+      P2.style.top=st.p2 + 'px';
+      B.style.left=st.x + 'px';
+      B.style.top=st.y + 'px';
+      S1.textContent=st.s1;
+      S2.textContent=st.s2;
+    });
+  })();
   </script>
 </body>
 </html>

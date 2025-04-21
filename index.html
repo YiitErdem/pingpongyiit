@@ -1,19 +1,129 @@
-<script type="module">
-  // Firebase importları
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-  import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Multiplayer Ping-Pong</title>
+  <style>
+    canvas { background: black; display: block; margin: 20px auto; }
+    #roomControls { text-align: center; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1 style="text-align:center; color: #333;">Multiplayer Ping-Pong</h1>
+  <div id="roomControls">
+    <input type="text" id="roomInput" placeholder="Room ID">
+    <button onclick="createRoom()">Create Room</button>
+    <button onclick="joinRoom()">Join Room</button>
+  </div>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-    authDomain: "masa-tenisi-v1.firebaseapp.com",
-    projectId: "masa-tenisi-v1",
-    storageBucket: "masa-tenisi-v1.appspot.com",
-    messagingSenderId: "186015084983",
-    appId: "1:186015084983:web:86f9d88e907423f5e33832",
-    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app/"
-  };
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  window.firebaseDB = db; // dışarı aç
-</script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const paddleHeight = 100;
+    const paddleWidth = 10;
+    const ballSize = 10;
+
+    let roomId = null;
+    let player = null;
+
+    let gameState = {
+      ball: { x: 400, y: 300, vx: 2, vy: 2 },
+      paddles: { player1: 250, player2: 250 }
+    };
+
+    function createRoom() {
+      roomId = document.getElementById("roomInput").value;
+      if (!roomId) return alert("Enter a room ID");
+      player = "player1";
+      db.ref("rooms/" + roomId).set(gameState);
+      listenToGame();
+    }
+
+    function joinRoom() {
+      roomId = document.getElementById("roomInput").value;
+      if (!roomId) return alert("Enter a room ID");
+      player = "player2";
+      listenToGame();
+    }
+
+    function listenToGame() {
+      db.ref("rooms/" + roomId).on("value", snapshot => {
+        const data = snapshot.val();
+        if (data) {
+          gameState = data;
+        }
+      });
+    }
+
+    document.addEventListener("keydown", (e) => {
+      const move = (e.key === "ArrowUp") ? -10 : (e.key === "ArrowDown") ? 10 : 0;
+      if (player === "player1") {
+        gameState.paddles.player1 += move;
+      } else if (player === "player2") {
+        gameState.paddles.player2 += move;
+      }
+      db.ref("rooms/" + roomId + "/paddles").set(gameState.paddles);
+    });
+
+    function gameLoop() {
+      // Ball Movement (only by player1)
+      if (player === "player1") {
+        gameState.ball.x += gameState.ball.vx;
+        gameState.ball.y += gameState.ball.vy;
+
+        // Bounce
+        if (gameState.ball.y <= 0 || gameState.ball.y >= 600) {
+          gameState.ball.vy *= -1;
+        }
+
+        // Paddle Collision
+        if (gameState.ball.x <= 20 && gameState.ball.y > gameState.paddles.player1 && gameState.ball.y < gameState.paddles.player1 + paddleHeight) {
+          gameState.ball.vx *= -1;
+        }
+
+        if (gameState.ball.x >= 780 && gameState.ball.y > gameState.paddles.player2 && gameState.ball.y < gameState.paddles.player2 + paddleHeight) {
+          gameState.ball.vx *= -1;
+        }
+
+        db.ref("rooms/" + roomId + "/ball").set(gameState.ball);
+      }
+
+      // Draw everything
+      ctx.clearRect(0, 0, 800, 600);
+      ctx.fillStyle = "white";
+
+      // Draw paddles
+      ctx.fillRect(10, gameState.paddles.player1, paddleWidth, paddleHeight);
+      ctx.fillRect(780, gameState.paddles.player2, paddleWidth, paddleHeight);
+
+      // Draw ball
+      ctx.beginPath();
+      ctx.arc(gameState.ball.x, gameState.ball.y, ballSize, 0, Math.PI * 2);
+      ctx.fill();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>

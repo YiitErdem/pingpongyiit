@@ -3,39 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ping Pong JS</title>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
-    rel="stylesheet"
-  />
+  <title>Ping Pong Game</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
   <style>
-    * { box-sizing: border-box; margin:0; padding:0; }
-    body {
-      background:#000; color:#fff;
-      font-family:'Press Start 2P',monospace;
-      overflow:hidden;
-    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:#000; color:#fff; font-family:'Press Start 2P',monospace; overflow:hidden; }
     header { text-align:center; padding:1rem; }
-    header .scores {
-      display:flex; justify-content:space-between;
-      padding:0 1rem; font-size:1rem;
-    }
+    .scores { display:flex; justify-content:space-between; padding:0 1rem; font-size:1rem; }
     #arena {
-      position:fixed; top:50%; left:50%;
+      position:fixed;
+      top:50%; left:50%;
       width:600px; height:900px;
       margin:-450px 0 0 -300px;
       background:#333; border:3px dashed #fff;
       touch-action:none;
     }
-    .paddle, .ball {
-      position:absolute; background:#fff;
-    }
+    .paddle, .ball { position:absolute; background:#fff; }
     .paddle { width:85px; height:12px; }
     .ball { width:15px; height:15px; border-radius:50%; }
     #paddle-bottom { bottom:0; }
     #paddle-top    { top:0; }
+    /* TOFAŞ yazısı */
+    .overlay-text {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%) rotate(-45deg);
+      color:rgba(255,255,255,0.1);
+      font-size:40px; white-space:nowrap;
+      pointer-events:none; user-select:none;
+    }
+    /* Geri sayım */
+    #countdown {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      color:#fff; font-size:80px;
+      z-index:12; display:none;
+      pointer-events:none;
+    }
     #touchPad {
       position:fixed; bottom:0; left:0;
       width:100%; height:120px;
@@ -43,26 +48,24 @@
       z-index:5; touch-action:none;
     }
     .dialog {
-      position:fixed;top:0;left:0;
-      width:100%;height:100%;
+      position:fixed; top:0; left:0;
+      width:100%; height:100%;
       background:rgba(0,0,0,0.8);
-      display:flex;align-items:center;justify-content:center;
+      display:flex; align-items:center; justify-content:center;
       z-index:10; text-align:center;
     }
-    .dialog.hide{display:none;}
-    .dialog button {
-      margin-top:1rem;padding:0.5rem 1rem;cursor:pointer;
-    }
+    .dialog.hide { display:none; }
+    .dialog button { margin-top:1rem; padding:0.5rem 1rem; cursor:pointer; }
     #controlPanel {
       position:fixed; bottom:140px; right:1rem;
       background:rgba(255,255,255,0.1);
-      padding:0.5rem;font-size:0.7rem;
+      padding:0.5rem; font-size:0.7rem;
       max-width:200px;
     }
-    #controlPanel h3{margin:0 0 0.3rem;font-size:0.8rem;}
-    #controlPanel ul{list-style:none;padding:0;margin:0 0 0.5rem;max-height:80px;overflow:auto;}
-    #controlPanel button{width:100%;margin:0.2rem 0;padding:0.3rem;cursor:pointer;}
-    #voteStatus{ text-align:center; margin:0.3rem 0 0; }
+    #controlPanel h3 { margin:0 0 0.3rem; font-size:0.8rem; }
+    #controlPanel ul { list-style:none; padding:0; margin:0 0 0.5rem; max-height:80px; overflow:auto; }
+    #controlPanel button { width:100%; margin:0.2rem 0; padding:0.3rem; cursor:pointer; }
+    #voteStatus { text-align:center; margin:0.3rem 0 0; }
   </style>
 </head>
 <body>
@@ -75,13 +78,17 @@
   </header>
 
   <div id="arena">
+    <div class="overlay-text">
+      TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ 
+    </div>
     <div id="paddle-bottom" class="paddle"></div>
     <div id="ball" class="ball"></div>
     <div id="paddle-top" class="paddle"></div>
+    <div id="countdown">3</div>
   </div>
   <div id="touchPad"></div>
 
-  <div id="dialog" class="dialog">
+  <div class="dialog" id="dialog">
     <div>
       <p id="dialogText">Press READY when you’re set</p>
       <button id="readyBtn">READY</button>
@@ -112,12 +119,9 @@
   const db = firebase.database();
 
   // URL params
-  const params   = new URLSearchParams(location.search);
-  const room     = params.get("room");
-  const role     = params.get("role");           // "player1" veya "player2"
-  const isP1     = role==="player1";
-  const bottomRole = role;
-  const topRole    = isP1 ? "player2" : "player1";
+  const p = new URLSearchParams(location.search);
+  const room = p.get("room"), role = p.get("role");
+  const bottomRole = role, topRole = role==="player1" ? "player2" : "player1";
 
   // refs
   const rootRef      = db.ref(`rooms/${room}`);
@@ -129,29 +133,28 @@
   const historyRef   = rootRef.child("history");
   const resetVoteRef = rootRef.child("resetVote");
 
-  // cleanup
+  // cleanup on leave
   window.addEventListener("beforeunload", ()=>{
     readyRef.child(role).remove();
     paddlesRef.child(role).remove();
     resetVoteRef.child(role).remove();
   });
 
-  // DIALOG + READY
-  const dialog     = document.getElementById("dialog");
-  const readyBtn   = document.getElementById("readyBtn");
-  const dialogText = document.getElementById("dialogText");
-  let amReady = false;
-  readyBtn.onclick = () => {
+  // dialog & ready
+  const dialog   = document.getElementById("dialog");
+  const readyBtn = document.getElementById("readyBtn");
+  const dt       = document.getElementById("dialogText");
+  let amReady=false;
+  readyBtn.onclick = ()=>{
     readyRef.child(role).set(true);
-    amReady = true;
-    readyBtn.disabled = true;
-    dialogText.textContent = "Waiting for opponent…";
+    amReady=true;
+    readyBtn.disabled=true;
+    dt.textContent="Waiting for opponent…";
   };
-  readyRef.on("value", snap => {
-    const r = snap.val()||{};
-    const cnt = Object.keys(r).length;
-    if (!amReady) dialogText.textContent = `Ready: ${cnt}/2`;
-    if (r.player1 && r.player2) {
+  readyRef.on("value",snap=>{
+    const r = snap.val()||{}, c=Object.keys(r).length;
+    if(!amReady) dt.textContent=`Ready: ${c}/2`;
+    if(r.player1&&r.player2){
       dialog.classList.add("hide");
       initMasterLoop();
       initLocalLoop();
@@ -160,161 +163,158 @@
   });
 
   // DOM elems
-  const pBot    = document.getElementById("paddle-bottom");
-  const pTop    = document.getElementById("paddle-top");
-  const ballEl  = document.getElementById("ball");
-  const s1El    = document.getElementById("score1");
-  const s2El    = document.getElementById("score2");
-  const historyList = document.getElementById("historyList");
-  const voteStatus  = document.getElementById("voteStatus");
+  const pBot = document.getElementById("paddle-bottom"),
+        pTop = document.getElementById("paddle-top"),
+        ballEl = document.getElementById("ball"),
+        score1El = document.getElementById("score1"),
+        score2El = document.getElementById("score2"),
+        historyList = document.getElementById("historyList"),
+        voteStatus  = document.getElementById("voteStatus"),
+        cdEl = document.getElementById("countdown");
 
-  // Constants
-  const W = 600, H = 900, PL = 85, PT = 12, BR = 15, WIN = 5;
+  // consts
+  const W=600,H=900,PL=85,PT=12,BR=15,WIN=5;
+  let scores={player1:0,player2:0}, paused=false;
+  let ball={x:W/2-BR/2,y:H/2-BR/2,vx:0,vy:0}, paddlePos=(W-PL)/2, speed=0;
 
-  let paddlePos = (W-PL)/2, speed=0, paused=false;
-  let ball = { x:W/2-BR/2, y:H/2-BR/2, vx:0, vy:0 };
-  let scores={player1:0,player2:0};
-
-  // Listeners
-  paddlesRef.on("value",snap=>{
-    const ps=snap.val()||{};
-    if(ps[bottomRole]!=null) pBot.style.left = ps[bottomRole]+"px";
-    if(ps[topRole]!=null)    pTop.style.left = ps[topRole]+"px";
+  // listeners
+  paddlesRef.on("value",s=>{const ps=s.val()||{};
+    if(ps[bottomRole]!=null) pBot.style.left=ps[bottomRole]+"px";
+    if(ps[topRole]!=null)    pTop.style.left=ps[topRole]+"px";
   });
-  ballRef.on("value",snap=>{
-    const b=snap.val(); if(b){
-      ballEl.style.left=b.x+"px";
-      ballEl.style.top =b.y+"px";
-    }
-  });
-  scoreRef.on("value",snap=>{
-    const sc=snap.val()||{};
+  ballRef.on("value",s=>{const b=s.val(); if(b){
+    ballEl.style.left=b.x+"px";
+    ballEl.style.top =b.y+"px";
+  }});
+  scoreRef.on("value",s=>{const sc=s.val()||{};
     scores=sc;
-    s1El.textContent=sc.player1||0;
-    s2El.textContent=sc.player2||0;
+    score1El.textContent=sc.player1||0;
+    score2El.textContent=sc.player2||0;
     if(sc.player1===WIN||sc.player2===WIN){
-      showMsg(`${sc.player1===WIN?"Player 1":"Player 2"} wins!`);
+      showMsg(`${sc.player1===WIN?"P1":"P2"} wins!`);
       historyRef.push({p1:sc.player1,p2:sc.player2,time:Date.now()});
     }
   });
-  pausedRef.on("value",snap=>{
-    paused=!!snap.val();
-    document.getElementById("stopBtn").textContent = paused?"Start":"Stop";
+  pausedRef.on("value",s=>{ paused=!!s.val();
+    document.getElementById("stopBtn").textContent= paused?"Start":"Stop";
   });
-  historyRef.limitToLast(10).on("child_added",snap=>{
-    const h=snap.val();
-    const li=document.createElement("li");
+  historyRef.limitToLast(10).on("child_added",s=>{
+    const h=s.val(),li=document.createElement("li");
     li.textContent=`${new Date(h.time).toLocaleTimeString()} • P1 ${h.p1} – P2 ${h.p2}`;
     historyList.prepend(li);
   });
-  resetVoteRef.on("value",snap=>{
-    const v=snap.val()||{};
-    const cnt=Object.keys(v).length;
-    voteStatus.textContent=`Votes: ${cnt}/2`;
-    if(cnt===2 && isP1) doReset();
+  resetVoteRef.on("value",s=>{
+    const v=s.val()||{}, c=Object.keys(v).length;
+    voteStatus.textContent=`Votes: ${c}/2`;
+    if(c===2 && role==="player1") doReset();
   });
 
-  // helper: on-screen mesaj
+  // show on-screen message
   function showMsg(txt){
     const d=document.createElement("div");
     Object.assign(d.style,{
-      position:"fixed", top:"40%", left:"50%",
+      position:"fixed",top:"40%",left:"50%",
       transform:"translate(-50%,-50%)",
       background:"rgba(255,255,255,0.2)",
-      padding:"1rem", fontSize:"0.9rem", zIndex:11
+      padding:"1rem",fontSize:"0.9rem",zIndex:11
     });
     d.textContent=txt; document.body.append(d);
     setTimeout(()=>d.remove(),2000);
   }
 
-  // Klavye
+  // keyboard
   document.addEventListener("keydown",e=>{
-    if(role==="player1"){
-      if(e.key==="a") speed=-10;
-      if(e.key==="d") speed=10;
-    }
-    if(role==="player2"){
-      if(e.key==="ArrowLeft") speed=-10;
-      if(e.key==="ArrowRight") speed=10;
-    }
-    if(e.key==="r") location.reload();
+    if(["a","A","ArrowLeft"].includes(e.key))  speed=-10;
+    if(["d","D","ArrowRight"].includes(e.key)) speed=10;
+    if(e.key==="r"||e.key==="R") location.reload();
   });
-  document.addEventListener("keyup",()=>speed=0);
+  document.addEventListener("keyup",()=> speed=0);
 
-  // Local paddle loop
+  // local paddle update
   function initLocalLoop(){
     setInterval(()=>{
       if(!paused && speed){
-        paddlePos+=speed;
-        paddlePos=Math.max(0,Math.min(W-PL,paddlePos));
+        paddlePos=Math.max(0,Math.min(W-PL,paddlePos+speed));
         paddlesRef.child(role).set(paddlePos);
       }
     },50);
   }
 
-  // Touch control
+  // touchpad
   function initTouchControl(){
     const tp=document.getElementById("touchPad");
-    function move(x){
+    function mv(x){
       const r=tp.getBoundingClientRect();
       let px=x-r.left-PL/2;
       px=Math.max(0,Math.min(W-PL,px));
       paddlePos=px;
       paddlesRef.child(role).set(px);
     }
-    tp.addEventListener("touchmove",e=>{move(e.touches[0].clientX);e.preventDefault();},{passive:false});
-    tp.addEventListener("mousemove",e=>move(e.clientX));
+    tp.addEventListener("touchmove",e=>{mv(e.touches[0].clientX);e.preventDefault();},{passive:false});
+    tp.addEventListener("mousemove",e=> mv(e.clientX));
   }
 
-  // Master game loop
+  // master loop
   function initMasterLoop(){
     scoreRef.set({player1:0,player2:0});
     pausedRef.set(false);
     resetVoteRef.remove();
-    spawnBall();
+    spawnBall();  // countdown + initial
     setInterval(()=>{
       if(paused) return;
       ball.x+=ball.vx; ball.y+=ball.vy;
-
-      // Left/right walls
       if(ball.x<0||ball.x>W-BR) ball.vx*=-1;
-
-      // Top paddle
       paddlesRef.once("value",snap=>{
         const ps=snap.val()||{};
-        // collision tolerance ±1px
+        // top
         if(ball.y < PT+BR+1){
-          if(ball.x+1 > ps.player2 && ball.x-1 < ps.player2+PL){
+          if(ball.x>ps.player2-1 && ball.x<ps.player2+PL+1){
             ball.vy*=-1.1; ball.vx*=1.1;
-          } else {
-            scores.player1++; scoreRef.set(scores);
-            if(scores.player1<WIN) spawnBall();
-            return;
-          }
+          } else { scorePoint("player1"); return; }
         }
-        // Bottom paddle
+        // bottom
         if(ball.y > H-PT-BR-1){
-          if(ball.x+1 > ps.player1 && ball.x-1 < ps.player1+PL){
+          if(ball.x>ps.player1-1 && ball.x<ps.player1+PL+1){
             ball.vy*=-1.1; ball.vx*=1.1;
-          } else {
-            scores.player2++; scoreRef.set(scores);
-            if(scores.player2<WIN) spawnBall();
-            return;
-          }
+          } else { scorePoint("player2"); return; }
         }
         ballRef.set(ball);
       });
     },50);
   }
 
+  function scorePoint(pl){
+    scores[pl]++;
+    scoreRef.set(scores);
+    if(scores[pl]<WIN){
+      pausedRef.set(true);
+      cdEl.textContent="3"; cdEl.style.display="block";
+      setTimeout(()=>{
+        cdEl.style.display="none";
+        spawnBallImmediate();
+        pausedRef.set(false);
+      },1000);
+    }
+  }
+
   function spawnBall(){
-    ball.x=W/2-BR/2; ball.y=H/2-BR/2;
+    pausedRef.set(true);
+    cdEl.textContent="3"; cdEl.style.display="block";
+    setTimeout(()=>{
+      cdEl.style.display="none";
+      spawnBallImmediate();
+      pausedRef.set(false);
+    },1000);
+  }
+  function spawnBallImmediate(){
+    ball.x=W/2-BR/2;
+    ball.y=H/2-BR/2;
     ball.vy=(Math.random()<0.5?1:-1)*8;
     ball.vx=(Math.random()<0.5?1:-1)*6;
     ballRef.set(ball);
   }
 
-  // Controls
+  // controls
   document.getElementById("stopBtn").onclick = ()=>{
     pausedRef.set(!paused);
   };
@@ -322,6 +322,7 @@
     resetVoteRef.child(role).set(true);
     document.getElementById("restartVoteBtn").disabled = true;
   };
+
   function doReset(){
     scores={player1:0,player2:0};
     scoreRef.set(scores);

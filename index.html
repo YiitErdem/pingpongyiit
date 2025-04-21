@@ -1,54 +1,75 @@
-<!-- 1. lobby.html -->
+<!-- lobby.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Lobi</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ping Pong Lobby</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.2.0/css/bootstrap.min.css">
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+  <script src="firebase.js"></script>
   <style>
-    .table-box { border: 2px solid #000; padding: 10px; margin: 10px; display: inline-block; width: 200px; text-align: center; }
-    button { margin: 5px; }
+    body { background:#222; color:#fff; }
+    .room { cursor:pointer; }
+    .room .card { background:#333; }
   </style>
 </head>
-<body>
-  <h1>Lobi</h1>
-  <div id="tables"></div>
+<body class="p-4">
+  <h1 class="mb-4">Ping Pong Lobby</h1>
+  <div class="row g-4">
+    <div class="col-md-6 room" data-room="masa1">
+      <div class="card p-3">
+        <h3>Table 1</h3>
+        <p>Players: <span id="masa1-players">0</span>/2</p>
+        <p>Time: <span id="masa1-time">0</span> min</p>
+      </div>
+    </div>
+    <div class="col-md-6 room" data-room="masa2">
+      <div class="card p-3">
+        <h3>Table 2</h3>
+        <p>Players: <span id="masa2-players">0</span>/2</p>
+        <p>Time: <span id="masa2-time">0</span> min</p>
+      </div>
+    </div>
+  </div>
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script>
-    const firebaseConfig = { /* senin configin */ };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const db = firebase.database()
+    const rooms = ['masa1','masa2']
 
-    const tableIds = ['masa1', 'masa2'];
-    const tablesDiv = document.getElementById('tables');
+    rooms.forEach(r=>{
+      const ref = db.ref('rooms/'+r)
+      // on player count
+      ref.child('players').on('value',snap=>{
+        document.getElementById(r+'-players').textContent = snap.numChildren()
+      })
+      // on creation timestamp
+      ref.child('createdAt').once('value',snap=>{
+        if(!snap.exists()) {
+          ref.child('createdAt').set(Date.now())
+          document.getElementById(r+'-time').textContent = '0'
+        }
+      })
+      // update elapsed time every minute
+      setInterval(async()=>{
+        const { createdAt } = (await ref.child('createdAt').get()).val()||{}
+        if(createdAt) {
+          let mins = Math.floor((Date.now()-createdAt)/60000)
+          document.getElementById(r+'-time').textContent = mins
+        }
+      },60000)
+    })
 
-    function createTableElement(roomId, info) {
-      const div = document.createElement('div');
-      div.className = 'table-box';
-      div.innerHTML = `<h3>${roomId}</h3>
-        <p>Skor: ${info.score1 || 0} - ${info.score2 || 0}</p>
-        <p>Süre: ${info.minutes || 0} dk</p>
-        <button onclick="joinRoom('${roomId}', 'player1')">Player 1 Ol</button>
-        <button onclick="joinRoom('${roomId}', 'player2')">Player 2 Ol</button>
-        <button onclick="joinRoom('${roomId}', 'viewer')">Izleyici Ol</button>`;
-      return div;
-    }
-
-    function joinRoom(roomId, role) {
-      const target = role === 'viewer' ? 'viewer.html' : 'game.html';
-      window.location.href = `${target}?room=${roomId}&role=${role}`;
-    }
-
-    function updateLobby() {
-      tablesDiv.innerHTML = '';
-      tableIds.forEach(id => {
-        db.ref('rooms/' + id).once('value', snap => {
-          const info = snap.val() || {};
-          tablesDiv.appendChild(createTableElement(id, info));
-        });
-      });
-    }
-    setInterval(updateLobby, 2000);
+    document.querySelectorAll('.room').forEach(el=>{
+      el.onclick = ()=>{
+        const room = el.dataset.room
+        // prompt role
+        let role = prompt('Choose role: player1, player2 or viewer','viewer')
+        if(!['player1','player2','viewer'].includes(role)) role='viewer'
+        window.location = `game.html?room=${room}&role=${role}`
+      }
+    })
   </script>
 </body>
 </html>

@@ -1,0 +1,58 @@
+<!-- index.html (Lobi Sayfası) -->
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Ping Pong Lobi</title>
+  <style>
+    body { background: #111; color: #fff; font-family: sans-serif; text-align: center; }
+    .table { width: 200px; height: 120px; background: #444; margin: 20px auto; border-radius: 10px; position: relative; cursor: pointer; }
+    .info { margin-top: 5px; font-size: 14px; color: #aaa; }
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const tables = ['masa1', 'masa2'];
+
+    tables.forEach(room => {
+      const div = document.createElement('div');
+      div.className = 'table';
+      div.innerHTML = `<strong>${room}</strong><div class="info" id="info-${room}">Yükleniyor...</div>`;
+      div.onclick = () => window.location.href = `game.html?room=${room}`;
+      document.body.appendChild(div);
+
+      const infoRef = ref(db, `rooms/${room}`);
+      onValue(infoRef, (snapshot) => {
+        const data = snapshot.val();
+        const info = document.getElementById(`info-${room}`);
+        if (!data) {
+          info.innerText = "Boş masa";
+        } else {
+          const p1 = data.players?.player1 ? '1' : '0';
+          const p2 = data.players?.player2 ? '1' : '0';
+          const skor = data.score ? `${data.score.player1} - ${data.score.player2}` : '0 - 0';
+          const dakika = data.startedAt ? `${Math.floor((Date.now() - data.startedAt) / 60000)} dk` : '';
+          info.innerText = `Oyuncular: ${p1}/${p2} | Skor: ${skor} ${dakika}`;
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+  <h1>pingpongyiit</h1>
+</body>
+</html>

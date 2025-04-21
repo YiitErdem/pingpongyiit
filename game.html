@@ -1,234 +1,193 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Ping Pong JS</title>
   <style>
-    :root {
-      --bg:#000;
-      --paddle:#fff;
-      --ball:#fff;
-      --border:#fff;
+    *{margin:0;padding:0;box-sizing:border-box;}
+    canvas{background:#111;display:block;margin:0 auto;}
+    #touchpad {
+      position: fixed;
+      bottom: 0; left: 0;
+      width: 100%; height: 30%;
+      background: rgba(255,255,255,0.05);
+      touch-action: none;
     }
-    body {
-      margin:0; padding:0; background:var(--bg); overflow:hidden; font-family:Arial,sans-serif;
-    }
-    #arena {
-      position:relative;
-      width:900px; height:600px;
-      margin:0 auto;
-      top:50%; transform:translateY(-50%);
-      background:var(--bg);
-      border:3px dashed var(--border);
-    }
-    .paddle {
-      position:absolute; width:12px; height:85px;
-      background:var(--paddle);
-    }
-    #ball {
-      position:absolute; width:15px; height:15px;
-      border-radius:50%; background:var(--ball);
-    }
-    #stats {
-      position:fixed; top:10px; left:50%;
-      transform:translateX(-50%);
-      color:#fff; text-align:center;
-      background:rgba(0,0,0,0.5); padding:5px 10px;
-      border-radius:5px; font-size:0.9rem;
-    }
-    #theme {
-      position:fixed; top:10px; right:10px;
-      padding:5px;
-    }
-    #chat {
-      position:fixed; bottom:0; right:0;
-      width:300px; height:40%;
-      background:rgba(0,0,0,0.6);
-      display:flex; flex-direction:column;
-    }
-    #messages {
-      flex:1; overflow-y:auto; padding:0.5rem; color:#fff; font-size:0.85rem;
-    }
-    #chatForm { display:flex; }
-    #chatInput { flex:1; border:none; padding:0.5rem; }
-    #sendBtn {
-      width:60px; border:none; background:#007bff; color:#fff; cursor:pointer;
+    #info {
+      position: fixed; top: 10px; left:50%;
+      transform: translateX(-50%);
+      color: white; font-family: monospace;
     }
   </style>
 </head>
 <body>
+  <div id="info"></div>
+  <canvas id="c" width="900" height="600"></canvas>
+  <div id="touchpad"></div>
 
-  <!-- İstatistikler -->
-  <div id="stats">Rally: 0  |  Speed: 0.0</div>
-  <!-- Tema seçimi -->
-  <select id="theme">
-    <option value="default">Default</option>
-    <option value="neon">Neon</option>
-    <option value="retro">Retro</option>
-  </select>
-
-  <!-- OYUN ALANI -->
-  <div id="arena">
-    <div id="paddle1" class="paddle"></div>
-    <div id="ball"></div>
-    <div id="paddle2" class="paddle"></div>
-  </div>
-
-  <!-- Canlı Chat -->
-  <div id="chat">
-    <div id="messages"></div>
-    <form id="chatForm">
-      <input id="chatInput" autocomplete="off" placeholder="Mesaj..." />
-      <button type="submit" id="sendBtn">Gönder</button>
-    </form>
-  </div>
-
-  <!-- Firebase & Oyun -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
   <script>
-    // --- Parametreler ---
+    // --- URL Parametreleri ---
     const params = new URLSearchParams(location.search);
-    const room = params.get('room') || 'masa1';
-    const user = decodeURIComponent(params.get('user')||'Anonim');
+    const ROOM = params.get('room') || 'room1';
+    const ROLE = params.get('role') || 'viewer';
+    document.getElementById('info').textContent = `${ROOM.toUpperCase()} — ROLE: ${ROLE}`;
 
-    // --- Firebase Başlat ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-      authDomain: "masa-tenisi-v1.firebaseapp.com",
+    // --- Firebase init ---
+    const cfg = {
+      apiKey: "...",
+      authDomain: "...",
       databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
-      storageBucket: "masa-tenisi-v1.appspot.com",
-      messagingSenderId: "186015084983",
-      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+      storageBucket: "...",
+      messagingSenderId: "...",
+      appId: "..."
     };
-    const app = firebase.initializeApp(firebaseConfig);
-    const db  = firebase.database(app);
-    const chatRef = db.ref(`chat/${room}`);
-    const stateRef= db.ref(`state/${room}`);
+    const app = firebase.initializeApp(cfg);
+    const db  = firebase.database();
+    const stateRef = db.ref(`game/${ROOM}/state`);
 
-    // --- Tema Seçimi ---
-    const themes = {
-      default: { bg:'#000', paddle:'#fff', ball:'#fff', border:'#fff' },
-      neon:    { bg:'#0d0d0d', paddle:'#39ff14', ball:'#ff2079', border:'#e81cff' },
-      retro:   { bg:'#001f3f', paddle:'#00ffff', ball:'#ffa500', border:'#ff4500' },
-    };
-    document.getElementById('theme').addEventListener('change', e=>{
-      const t = themes[e.target.value];
-      for(let k in t) document.documentElement.style.setProperty(`--${k}`, t[k]);
+    // --- Canvas & context ---
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    // --- Oyun nesneleri ---
+    const P = { w:12, h:85, speed:8 };
+    let left  = { y:(H-P.h)/2 };
+    let right = { y:(H-P.h)/2 };
+    let ball  = { x:W/2, y:H/2, vx:5, vy:5, r:10 };
+    let scoreL = 0, scoreR = 0;
+
+    // --- Kullanıcı kontrol modu ---
+    let controlMode = 'keyboard'; // 'keyboard'|'mouse'|'touch'
+    document.addEventListener('keydown', e => {
+      if(e.key==='1') controlMode='keyboard';
+      if(e.key==='2') controlMode='mouse';
+      if(e.key==='3') controlMode='touch';
     });
 
-    // --- Chat Gönder ---
-    document.getElementById('chatForm').addEventListener('submit',e=>{
-      e.preventDefault();
-      const txt = document.getElementById('chatInput').value.trim();
-      if(!txt) return;
-      chatRef.push({ user, text:txt, time:Date.now() });
-      document.getElementById('chatInput').value='';
-    });
-    // --- Chat Dinle ---
-    chatRef.on('child_added', snap=>{
-      const m = snap.val(), d = new Date(m.time).toLocaleTimeString();
-      const el = document.createElement('div');
-      el.textContent = `[${d}] ${m.user}: ${m.text}`;
-      document.getElementById('messages').append(el);
-      document.getElementById('messages').scrollTop = 1e9;
+    // --- Klavye ---
+    const keys = {};
+    window.addEventListener('keydown',e=>keys[e.key]=true);
+    window.addEventListener('keyup',e=>keys[e.key]=false);
+
+    // --- Mouse ---
+    canvas.addEventListener('mousemove', e=>{
+      if(controlMode!=='mouse') return;
+      const ry = e.clientY - canvas.getBoundingClientRect().top;
+      if(ROLE==='player1') left.y = ry-P.h/2;
+      if(ROLE==='player2') right.y= ry-P.h/2;
     });
 
-    // --- Oyun Değişkenleri ---
-    const arena = { w:900, h:600 };
-    const P = { w:12, h:85 };
-    const B = { r:7.5 };
-    let p1 = { y:(arena.h-P.h)/2, vy:0 };
-    let p2 = { y:(arena.h-P.h)/2, vy:0 };
-    let ball = { x:arena.w/2, y:arena.h/2, vx:0, vy:0 };
-    const speed = 6;
-    let rally=0;
-
-    const el1 = document.getElementById('paddle1');
-    const el2 = document.getElementById('paddle2');
-    const eball = document.getElementById('ball');
-
-    // --- Başlat ---
-    function resetBall(){
-      ball.x=arena.w/2; ball.y=arena.h/2;
-      rally=0; updateStats();
-      const dir = Math.random()<0.5?1:-1;
-      ball.vx=dir*speed; ball.vy= (Math.random()*2-1)*speed;
+    // --- Touchpad ---
+    const tp = document.getElementById('touchpad');
+    tp.addEventListener('pointerdown',startTouch);
+    tp.addEventListener('pointermove',moveTouch);
+    tp.addEventListener('pointerup',endTouch);
+    let touching=false, idTouch=null;
+    function startTouch(e){
+      touching=true; idTouch=e.pointerId; handleTouch(e);
     }
-    resetBall();
+    function moveTouch(e){
+      if(!touching||e.pointerId!==idTouch) return;
+      handleTouch(e);
+    }
+    function endTouch(e){
+      if(e.pointerId===idTouch) touching=false;
+    }
+    function handleTouch(e){
+      if(controlMode!=='touch') return;
+      const ry = e.clientY - canvas.getBoundingClientRect().top;
+      if(ROLE==='player1') left.y = ry-P.h/2;
+      if(ROLE==='player2') right.y= ry-P.h/2;
+    }
 
-    // --- Klavye + Mouse Kontrol ---
-    window.addEventListener('keydown', e=>{
-      if(e.key==='w') p1.vy=-speed;
-      if(e.key==='s') p1.vy= speed;
-      if(e.key==='ArrowUp') p2.vy=-speed;
-      if(e.key==='ArrowDown') p2.vy= speed;
-    });
-    window.addEventListener('keyup', e=>{
-      if(e.key==='w'||e.key==='s') p1.vy=0;
-      if(e.key==='ArrowUp'||e.key==='ArrowDown') p2.vy=0;
-    });
-    // Mouse sol/sağ yarıda paddle kontrolü
-    document.getElementById('arena').addEventListener('mousemove', e=>{
-      const rect = e.target.getBoundingClientRect();
-      const y = e.clientY - rect.top;
-      const x = e.clientX - rect.left;
-      if(x<arena.w/2) p1.y = y - P.h/2;
-      else             p2.y = y - P.h/2;
+    // --- Firebase’dan okuma (tüm roller dinler) ---
+    stateRef.on('value', snap=>{
+      const s = snap.val();
+      if(!s) return;
+      Object.assign(left,  { y:s.leftY });
+      Object.assign(right, { y:s.rightY });
+      Object.assign(ball,  { x:s.ballX, y:s.ballY });
+      scoreL = s.scoreL; scoreR = s.scoreR;
     });
 
-    // --- Güncelleme Döngüsü ---
+    // --- Physics & render ---
     function update(){
-      // hareket
-      p1.y += p1.vy; p2.y += p2.vy;
-      ball.x += ball.vx; ball.y += ball.vy;
-
-      // duvar çarpması
-      if(ball.y< B.r || ball.y>arena.h-B.r) ball.vy*=-1;
-
-      // paddle1
-      if(ball.x< P.w + B.r) {
-        if(ball.y>p1.y && ball.y<p1.y+P.h){
-          ball.vx*=-1; rally++; updateStats();
-        }
+      // Sadece oyuncular kendi paddle’ını hareket ettirir:
+      if(ROLE==='player1' && controlMode==='keyboard'){
+        if(keys['w']) left.y -= P.speed;
+        if(keys['s']) left.y += P.speed;
       }
-      // paddle2
-      if(ball.x>arena.w-P.w - B.r) {
-        if(ball.y>p2.y && ball.y<p2.y+P.h){
-          ball.vx*=-1; rally++; updateStats();
-        }
+      if(ROLE==='player2' && controlMode==='keyboard'){
+        if(keys['ArrowUp']) right.y -= P.speed;
+        if(keys['ArrowDown']) right.y += P.speed;
       }
-      // skor
-      let scored = false;
-      if(ball.x<0){ resetBall(); scored=true; }
-      if(ball.x>arena.w){ resetBall(); scored=true; }
-      if(scored){
-        // scoreboard Firebase vs. local vs. UI vs. Sıfırla…
+      // sınırlar
+      left.y  = Math.max(0, Math.min(H-P.h, left.y));
+      right.y = Math.max(0, Math.min(H-P.h, right.y));
+
+      // Fizik GENEL (herkesin bilgisayarında çalışabilir)
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+      if(ball.y<ball.r||ball.y>H-ball.r) ball.vy = -ball.vy;
+
+      // paddle çarpışma
+      if(ball.x < P.w+ball.r){
+        if(ball.y>left.y && ball.y<left.y+P.h) ball.vx = -ball.vx;
+        else { scoreR++; resetBall(); }
+      }
+      if(ball.x > W-P.w-ball.r){
+        if(ball.y>right.y && ball.y<right.y+P.h) ball.vx = -ball.vx;
+        else { scoreL++; resetBall(); }
       }
 
-      // DOM güncelle
-      el1.style.top = Math.max(0,Math.min(arena.h-P.h,p1.y))+'px';
-      el2.style.top = Math.max(0,Math.min(arena.h-P.h,p2.y))+'px';
-      eball.style.left = ball.x - B.r+'px';
-      eball.style.top  = ball.y - B.r+'px';
-
-      // Firebase’e yaz
+      // Firebase’e yaz (her karede güncel state’i set)
       stateRef.set({
-        p1Y:p1.y, p2Y:p2.y,
-        ballX:ball.x, ballY:ball.y,
-        rally
+        leftY: left.y,
+        rightY: right.y,
+        ballX: ball.x,
+        ballY: ball.y,
+        scoreL, scoreR
       });
 
+      render();
       requestAnimationFrame(update);
     }
-    update();
 
-    // --- İstatistik Güncelle ---
-    function updateStats(){
-      const sp = Math.hypot(ball.vx,ball.vy).toFixed(1);
-      document.getElementById('stats').innerHTML = `Rally: ${rally}   Speed: ${sp}`;
+    function resetBall(){
+      ball.x = W/2; ball.y=H/2;
+      // hız rastgele yön
+      ball.vx = (Math.random()<0.5?1:-1)*5;
+      ball.vy = (Math.random()<0.5?1:-1)*5;
     }
+
+    function render(){
+      ctx.clearRect(0,0,W,H);
+      // orta çizgi
+      ctx.strokeStyle='#555';
+      ctx.setLineDash([10,10]);
+      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+      ctx.setLineDash([]);
+      // paddles
+      ctx.fillStyle='#fff';
+      ctx.fillRect(0, left.y, P.w, P.h);
+      ctx.fillRect(W-P.w, right.y, P.w, P.h);
+      // top
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, 2*Math.PI);
+      ctx.fill();
+      // skor
+      ctx.font='24px monospace';
+      ctx.fillText(`${scoreL} – ${scoreR}`, W/2-30, 30);
+    }
+
+    resetBall();
+    update();
   </script>
 </body>
 </html>

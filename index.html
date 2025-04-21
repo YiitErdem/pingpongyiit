@@ -1,98 +1,109 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ping Pong Lobi</title>
   <style>
     body {
-      margin:0; padding:0;
-      background: url('background.PNG') center/cover no-repeat;
+      margin: 0;
+      padding: 0;
       font-family: Arial, sans-serif;
-      color: #fff;
-      display: flex; flex-direction: column; align-items: center;
-      height: 100vh; overflow: hidden;
+      background: url('background.PNG') center/cover no-repeat;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    h1 { margin:1rem 0; }
-    #rooms { display:flex; gap:1rem; margin-bottom:1rem; }
-    button.room {
-      padding:1rem 2rem; font-size:1rem;
-      background:rgba(0,0,0,0.5); border:2px solid #fff; color:#fff;
-      cursor:pointer;
+    .rooms {
+      display: flex;
+      gap: 2rem;
     }
-    #chat {
-      position:absolute; bottom:0; right:0;
-      width:300px; height:40%;
-      background:rgba(0,0,0,0.6);
-      display:flex; flex-direction:column;
+    .room {
+      background: rgba(255,255,255,0.8);
+      padding: 1rem;
+      border-radius: 8px;
+      width: 200px;
+      text-align: center;
     }
-    #messages {
-      flex:1; overflow-y:auto; padding:0.5rem; font-size:0.85rem;
-    }
-    #chatInput { border:none; padding:0.5rem; flex:1; }
-    #sendBtn {
-      width:60px; border:none; background:#28a745; color:#fff; cursor:pointer;
-    }
-    #chatForm { display:flex; }
+    .room h2 { margin-top: 0; }
+    .status { margin: .5rem 0; }
+    .btn { margin: .25rem 0; padding: .5rem; width: 100%; cursor: pointer; }
+    .reset { margin-top: 1rem; font-size: .8rem; }
   </style>
 </head>
 <body>
-  <h1>🏓 Masa Tenisi Lobi</h1>
-  <div id="rooms">
-    <button class="room" onclick="join('masa1')">Masa 1</button>
-    <button class="room" onclick="join('masa2')">Masa 2</button>
+  <div class="rooms">
+    <div class="room" id="room1">
+      <h2>Masa 1</h2>
+      <div class="status" id="status1">Yükleniyor…</div>
+      <button class="btn" onclick="join('room1','player1')">Player 1 Olarak Katıl</button>
+      <button class="btn" onclick="join('room1','player2')">Player 2 Olarak Katıl</button>
+      <button class="btn" onclick="join('room1','viewer')">İzleyici Olarak Katıl</button>
+      <div class="reset">
+        <input type="password" id="pwd1" placeholder="Şifre" style="width:100%;padding:.25rem">
+        <button class="btn" onclick="resetRoom('room1')">Reset</button>
+      </div>
+    </div>
+    <div class="room" id="room2">
+      <h2>Masa 2</h2>
+      <div class="status" id="status2">Yükleniyor…</div>
+      <button class="btn" onclick="join('room2','player1')">Player 1 Olarak Katıl</button>
+      <button class="btn" onclick="join('room2','player2')">Player 2 Olarak Katıl</button>
+      <button class="btn" onclick="join('room2','viewer')">İzleyici Olarak Katıl</button>
+      <div class="reset">
+        <input type="password" id="pwd2" placeholder="Şifre" style="width:100%;padding:.25rem">
+        <button class="btn" onclick="resetRoom('room2')">Reset</button>
+      </div>
+    </div>
   </div>
 
-  <div id="chat">
-    <div id="messages"></div>
-    <form id="chatForm">
-      <input id="chatInput" autocomplete="off" placeholder="Mesajınız…" />
-      <button type="submit" id="sendBtn">Gönder</button>
-    </form>
-  </div>
-
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
   <script>
-    // --- KULLANICI VE LOBİ ROOM BİLGİSİ ---
-    const user = prompt('İsminiz?')||'Anonim';
-    function join(room){
-      location.href = `game.html?room=${room}&user=${encodeURIComponent(user)}`;
-    }
-
-    // --- FireBase Başlat ---
+    // Firebase config
     const firebaseConfig = {
-      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      apiKey: "...",
+      authDomain: "...",
       databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
-      storageBucket: "masa-tenisi-v1.appspot.com",
-      messagingSenderId: "186015084983",
-      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+      storageBucket: "...",
+      messagingSenderId: "...",
+      appId: "..."
     };
+    // Init
     const app = firebase.initializeApp(firebaseConfig);
-    const db  = firebase.database(app);
-    const chatRef = db.ref('chat/lobby');
+    const db  = firebase.database();
 
-    // --- Chat Gönder ---
-    document.getElementById('chatForm')
-      .addEventListener('submit', e => {
-        e.preventDefault();
-        const txt = document.getElementById('chatInput').value.trim();
-        if(!txt) return;
-        chatRef.push({ user, text: txt, time: Date.now() });
-        document.getElementById('chatInput').value='';
+    // Odaları dinle
+    ['room1','room2'].forEach(room => {
+      const statusEl = document.getElementById('status' + room.slice(-1));
+      const refRoom = db.ref('rooms/' + room);
+      refRoom.on('value', snap => {
+        const v = snap.val() || {};
+        const p1 = v.player1 ? 'DOLU' : 'BOŞ';
+        const p2 = v.player2 ? 'DOLU' : 'BOŞ';
+        statusEl.textContent = `P1: ${p1} — P2: ${p2}`;
       });
-
-    // --- Chat Dinle ---
-    chatRef.on('child_added', snap => {
-      const m = snap.val();
-      const d = new Date(m.time).toLocaleTimeString();
-      const el = document.createElement('div');
-      el.textContent = `[${d}] ${m.user}: ${m.text}`;
-      document.getElementById('messages').appendChild(el);
-      document.getElementById('messages').scrollTop = 1e9;
     });
+
+    function join(room, role) {
+      // Boşsa rezerve et
+      const refRoom = db.ref('rooms/' + room + '/' + role);
+      refRoom.transaction(curr => curr||true);
+      // Url ye yönlendir
+      window.location = `game.html?room=${room}&role=${role}`;
+    }
+
+    function resetRoom(room) {
+      const pwd = document.getElementById('pwd'+room.slice(-1)).value;
+      if(pwd==='1234'){
+        db.ref('rooms/' + room).set({player1:false,player2:false});
+        db.ref('game/'+room).remove();
+        alert(`${room} resetlendi.`);
+      } else alert('Yanlış şifre');
+    }
   </script>
 </body>
 </html>

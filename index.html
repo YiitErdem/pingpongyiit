@@ -3,141 +3,135 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ping Pong Lobby</title>
-  <style>
-    /* Arka plan resmi */
-    body {
-      margin: 0;
-      padding: 1rem;
-      font-family: Arial, sans-serif;
-      background: url('background.PNG') no-repeat center center fixed;
-      background-size: cover;
-      color: #eee;
-    }
-    h1 {
-      text-align: center;
-      text-shadow: 0 0 5px rgba(0,0,0,0.7);
-    }
-    .rooms {
-      display: flex;
-      justify-content: space-around;
-      margin: 2rem 0;
-    }
-    .room {
-      background: rgba(0,0,0,0.6);
-      padding: 1rem;
-      border: 1px solid #444;
-      width: 200px;
-      text-align: center;
-      border-radius: 4px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    }
-    .room h2 {
-      margin-top: 0;
-      text-shadow: 0 0 3px rgba(0,0,0,0.7);
-    }
-    .room p {
-      margin: 0.5rem 0;
-    }
-    .room button {
-      margin: 0.25rem 0;
-      padding: 0.5rem;
-      width: 90%;
-      cursor: pointer;
-      background: #444;
-      border: none;
-      color: #eee;
-      border-radius: 2px;
-      transition: background 0.2s;
-    }
-    .room button:hover:not(:disabled) {
-      background: #666;
-    }
-    .room button:disabled {
-      background: #333;
-      color: #666;
-      cursor: not-allowed;
-    }
-    #resetBtn {
-      display: block;
-      margin: 2rem auto 0;
-      padding: 0.5rem 1rem;
-      background: #900;
-      border: none;
-      color: #fff;
-      cursor: pointer;
-      border-radius: 2px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.7);
-      transition: background 0.2s;
-    }
-    #resetBtn:hover {
-      background: #b00;
-    }
-  </style>
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+  <title>Ping Pong Lobby</title>
+
+  <!-- Bootstrap CDN for quick layout -->
+  <link
+    href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.2.0/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+
+  <!-- 1) Firebase SDKs -->
+  <script
+    src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"
+  ></script>
+  <script
+    src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"
+  ></script>
+
+  <!-- 2) Inline your Firebase config & init -->
   <script>
+    // ←– replace these values with your own from the console:
     const firebaseConfig = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
-      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      databaseURL:
+        "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
       storageBucket: "masa-tenisi-v1.appspot.com",
       messagingSenderId: "186015084983",
-      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+      appId: "1:186015084983:web:86f9d88e907423f5e33832",
     };
+    // initialize:
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const rooms = ["masa1","masa2"];
+  </script>
 
-    function updateRooms() {
-      rooms.forEach(room => {
-        db.ref(`rooms/${room}/paddles`).once("value", snap => {
-          const cnt = snap.numChildren();
-          document.getElementById(`${room}-status`).textContent =
-            cnt===0 ? "Empty" :
-            cnt===1 ? "1 Player" :
-            "Full";
-          document.getElementById(`${room}-p1`).disabled = cnt>=1;
-          document.getElementById(`${room}-p2`).disabled = cnt>=2;
-        });
-      });
+  <style>
+    body {
+      background: #222;
+      color: #fff;
+      padding: 2rem;
     }
+    .room {
+      margin-bottom: 2rem;
+    }
+    .room .card {
+      background: #333;
+    }
+    .btn-room {
+      margin-right: 0.5rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="mb-4">Ping Pong Lobby</h1>
 
-    window.addEventListener("DOMContentLoaded", () => {
-      rooms.forEach(room => {
-        document.getElementById(`${room}-p1`).onclick = () =>
-          location.href = `game.html?room=${room}&role=player1`;
-        document.getElementById(`${room}-p2`).onclick = () =>
-          location.href = `game.html?room=${room}&role=player2`;
+  <div id="rooms" class="row gy-4">
+    <!-- JS will inject two room cards here -->
+  </div>
+
+  <script>
+    // --- 1) Define your two fixed rooms:
+    const roomList = ["masa1", "masa2"];
+
+    // --- 2) Grab a reference to your RTDB root:
+    const db = firebase.database();
+
+    // --- 3) Reference to the container DIV:
+    const container = document.getElementById("rooms");
+
+    roomList.forEach((room) => {
+      // 3a) Build the HTML structure for each room:
+      const col = document.createElement("div");
+      col.className = "col-md-6 room";
+      col.innerHTML = `
+        <div class="card p-3">
+          <h3>Table ${room.replace("masa", "")}</h3>
+          <p>Player 1: <span id="${room}-p1">––</span></p>
+          <p>Player 2: <span id="${room}-p2">––</span></p>
+          <div>
+            <button id="${room}-btn-p1" class="btn btn-sm btn-primary btn-room">
+              Join as Player 1
+            </button>
+            <button id="${room}-btn-p2" class="btn btn-sm btn-secondary btn-room">
+              Join as Player 2
+            </button>
+            <button id="${room}-btn-vw" class="btn btn-sm btn-light btn-room text-dark">
+              Join as Viewer
+            </button>
+          </div>
+        </div>`;
+      container.appendChild(col);
+
+      // 3b) Wire up references:
+      const p1Label = document.getElementById(`${room}-p1`);
+      const p2Label = document.getElementById(`${room}-p2`);
+      const btnP1 = document.getElementById(`${room}-btn-p1`);
+      const btnP2 = document.getElementById(`${room}-btn-p2`);
+      const btnVW = document.getElementById(`${room}-btn-vw`);
+      const playersRef = db.ref(`rooms/${room}/players`);
+
+      // 3c) Listen for realtime slot changes:
+      playersRef.on("value", (snap) => {
+        const players = snap.val() || {};
+        p1Label.textContent = players.player1 ? "✔ joined" : "––";
+        p2Label.textContent = players.player2 ? "✔ joined" : "––";
+        btnP1.disabled = !!players.player1;
+        btnP2.disabled = !!players.player2;
       });
-      db.ref("rooms").on("value", updateRooms);
-      updateRooms();
-      document.getElementById("resetBtn").onclick = () => {
-        const code = prompt("Enter reset code:");
-        if (code==="1234") rooms.forEach(r=>db.ref(`rooms/${r}`).remove());
-        else alert("Wrong code!");
+
+      // 3d) Joining logic:
+      btnP1.onclick = () => {
+        playersRef
+          .child("player1")
+          .set({ joined: Date.now() })
+          .then(() => {
+            window.location.href = `game.html?room=${room}&role=player1`;
+          });
+      };
+      btnP2.onclick = () => {
+        playersRef
+          .child("player2")
+          .set({ joined: Date.now() })
+          .then(() => {
+            window.location.href = `game.html?room=${room}&role=player2`;
+          });
+      };
+      btnVW.onclick = () => {
+        window.location.href = `viewer.html?room=${room}`;
       };
     });
   </script>
-</head>
-<body>
-  <h1>📶 Ping Pong Lobby</h1>
-  <div class="rooms">
-    <div class="room">
-      <h2>Masa 1</h2>
-      <p>Status: <span id="masa1-status">Loading…</span></p>
-      <button id="masa1-p1">Join as Player 1</button>
-      <button id="masa1-p2">Join as Player 2</button>
-    </div>
-    <div class="room">
-      <h2>Masa 2</h2>
-      <p>Status: <span id="masa2-status">Loading…</span></p>
-      <button id="masa2-p1">Join as Player 1</button>
-      <button id="masa2-p2">Join as Player 2</button>
-    </div>
-  </div>
-  <button id="resetBtn">🔄 Reset All Tables</button>
 </body>
 </html>

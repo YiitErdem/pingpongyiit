@@ -1,49 +1,89 @@
-<!-- viewer.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <title>Ping Pong Spectator</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body{margin:0;overflow:hidden;background:#000}
-    #arena{position:relative;margin:auto;top:0;left:0;right:0;bottom:0;width:800px;height:500px;border:2px solid #fff}
-    canvas{display:block}
-    #score{position:absolute;top:10px;width:100%;text-align:center;color:#fff;font:20px sans-serif}
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ping Pong Viewer</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+    rel="stylesheet"
+  />
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
-  <script src="firebase.js"></script>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:'Press Start 2P',monospace; }
+    header { display:flex; justify-content:space-between; padding:1rem; }
+    .arena { position:fixed; top:50%; left:50%; width:900px; height:600px;
+             margin:-300px 0 0 -450px; background:#333; border:3px dashed #fff; }
+    .player-left-paddle, .player-right-paddle, .ping-pong-ball {
+      position:absolute; background:#fff;
+    }
+    .player-left-paddle { width:12px; height:85px; left:0; }
+    .player-right-paddle { width:12px; height:85px; right:0; }
+    .ping-pong-ball { width:15px; height:15px; border-radius:50%; }
+    footer { position:fixed; bottom:0; width:100%; text-align:center; font-size:.75rem; }
+  </style>
 </head>
 <body>
-  <div id="arena">
-    <canvas id="canvas" width="800" height="500"></canvas>
-    <div id="score">0 : 0</div>
-  </div>
-  <script>
-  (()=>{
-    const params=new URLSearchParams(location.search)
-    const room=params.get('room')||'masa1'
-    const dbRef=firebase.database().ref('rooms/'+room)
-    const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d')
-    const paddleH=80,paddleW=12
+  <header>
+    <div>Player 1: <span id="score1">0</span></div>
+    <h1>Viewer Mode</h1>
+    <div>Player 2: <span id="score2">0</span></div>
+  </header>
 
-    dbRef.on('value',snap=>{
-      const v=snap.val()
-      // draw
-      ctx.clearRect(0,0,800,500)
-      ctx.strokeStyle='#555';ctx.setLineDash([5,5])
-      ctx.beginPath();ctx.moveTo(400,0);ctx.lineTo(400,500);ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle='#fff'
-      const p1=v.players.player1?.y||210
-      const p2=v.players.player2?.y||210
-      ctx.fillRect(0,p1,paddleW,paddleH)
-      ctx.fillRect(800-paddleW,p2,paddleW,paddleH)
-      ctx.beginPath();ctx.arc(v.ball.x,v.ball.y,7,0,2*Math.PI);ctx.fill()
-      document.getElementById('score').textContent=v.score.p1+' : '+v.score.p2
-    })
-  })()
+  <div class="arena">
+    <div id="paddle1" class="player-left-paddle"></div>
+    <div id="ball" class="ping-pong-ball"></div>
+    <div id="paddle2" class="player-right-paddle"></div>
+  </div>
+
+  <footer>({{ room }})</footer>
+
+  <script>
+  // ← Firebase init
+  const firebaseConfig = {
+    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+    authDomain: "masa-tenisi-v1.firebaseapp.com",
+    databaseURL:
+      "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "masa-tenisi-v1",
+    storageBucket: "masa-tenisi-v1.appspot.com",
+    messagingSenderId: "186015084983",
+    appId: "1:186015084983:web:86f9d88e907423f5e33832",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // parse room
+  const room = new URLSearchParams(location.search).get("room");
+  const rootRef  = db.ref(`rooms/${room}`);
+  const paddlesRef = rootRef.child("paddles");
+  const ballRef = rootRef.child("ball");
+  const scoreRef = rootRef.child("scores");
+  document.querySelector("footer").textContent = room;
+
+  // grab els
+  const p1 = document.getElementById("paddle1");
+  const p2 = document.getElementById("paddle2");
+  const b  = document.getElementById("ball");
+  const s1 = document.getElementById("score1");
+  const s2 = document.getElementById("score2");
+
+  // subscribe
+  paddlesRef.on("value", snap => {
+    const ps = snap.val()||{};
+    if (ps.player1 != null) p1.style.top = ps.player1+"px";
+    if (ps.player2 != null) p2.style.top = ps.player2+"px";
+  });
+  ballRef.on("value", snap => {
+    const d = snap.val();
+    if (d) { b.style.left = d.x+"px"; b.style.top = d.y+"px"; }
+  });
+  scoreRef.on("value", snap => {
+    const sc = snap.val()||{};
+    s1.textContent = sc.player1||0;
+    s2.textContent = sc.player2||0;
+  });
   </script>
 </body>
 </html>

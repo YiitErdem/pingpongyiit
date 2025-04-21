@@ -1,58 +1,54 @@
-<!-- index.html (Lobi Sayfası) -->
+<!-- 1. lobby.html -->
 <!DOCTYPE html>
-<html lang="tr">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Ping Pong Lobi</title>
+  <title>Lobi</title>
   <style>
-    body { background: #111; color: #fff; font-family: sans-serif; text-align: center; }
-    .table { width: 200px; height: 120px; background: #444; margin: 20px auto; border-radius: 10px; position: relative; cursor: pointer; }
-    .info { margin-top: 5px; font-size: 14px; color: #aaa; }
+    .table-box { border: 2px solid #000; padding: 10px; margin: 10px; display: inline-block; width: 200px; text-align: center; }
+    button { margin: 5px; }
   </style>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-      authDomain: "masa-tenisi-v1.firebaseapp.com",
-      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "masa-tenisi-v1",
-      storageBucket: "masa-tenisi-v1.appspot.com",
-      messagingSenderId: "186015084983",
-      appId: "1:186015084983:web:86f9d88e907423f5e33832"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    const tables = ['masa1', 'masa2'];
-
-    tables.forEach(room => {
-      const div = document.createElement('div');
-      div.className = 'table';
-      div.innerHTML = `<strong>${room}</strong><div class="info" id="info-${room}">Yükleniyor...</div>`;
-      div.onclick = () => window.location.href = `game.html?room=${room}`;
-      document.body.appendChild(div);
-
-      const infoRef = ref(db, `rooms/${room}`);
-      onValue(infoRef, (snapshot) => {
-        const data = snapshot.val();
-        const info = document.getElementById(`info-${room}`);
-        if (!data) {
-          info.innerText = "Boş masa";
-        } else {
-          const p1 = data.players?.player1 ? '1' : '0';
-          const p2 = data.players?.player2 ? '1' : '0';
-          const skor = data.score ? `${data.score.player1} - ${data.score.player2}` : '0 - 0';
-          const dakika = data.startedAt ? `${Math.floor((Date.now() - data.startedAt) / 60000)} dk` : '';
-          info.innerText = `Oyuncular: ${p1}/${p2} | Skor: ${skor} ${dakika}`;
-        }
-      });
-    });
-  </script>
 </head>
 <body>
-  <h1>pingpongyiit</h1>
+  <h1>Lobi</h1>
+  <div id="tables"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = { /* senin configin */ };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const tableIds = ['masa1', 'masa2'];
+    const tablesDiv = document.getElementById('tables');
+
+    function createTableElement(roomId, info) {
+      const div = document.createElement('div');
+      div.className = 'table-box';
+      div.innerHTML = `<h3>${roomId}</h3>
+        <p>Skor: ${info.score1 || 0} - ${info.score2 || 0}</p>
+        <p>Süre: ${info.minutes || 0} dk</p>
+        <button onclick="joinRoom('${roomId}', 'player1')">Player 1 Ol</button>
+        <button onclick="joinRoom('${roomId}', 'player2')">Player 2 Ol</button>
+        <button onclick="joinRoom('${roomId}', 'viewer')">Izleyici Ol</button>`;
+      return div;
+    }
+
+    function joinRoom(roomId, role) {
+      const target = role === 'viewer' ? 'viewer.html' : 'game.html';
+      window.location.href = `${target}?room=${roomId}&role=${role}`;
+    }
+
+    function updateLobby() {
+      tablesDiv.innerHTML = '';
+      tableIds.forEach(id => {
+        db.ref('rooms/' + id).once('value', snap => {
+          const info = snap.val() || {};
+          tablesDiv.appendChild(createTableElement(id, info));
+        });
+      });
+    }
+    setInterval(updateLobby, 2000);
+  </script>
 </body>
 </html>

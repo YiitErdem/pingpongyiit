@@ -1,11 +1,54 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Masa Tenisi - Bekleme Salonu</title>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+  <meta charset="UTF-8">
+  <title>Lobi | PingPong Yiit</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      background: #f5f5f5;
+    }
 
+    h1 {
+      margin-top: 30px;
+    }
+
+    .tables {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-top: 50px;
+    }
+
+    .table {
+      background: white;
+      padding: 10px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      cursor: pointer;
+      width: 250px;
+    }
+
+    .table img {
+      width: 100%;
+      border-radius: 8px;
+    }
+
+    .info {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>pingpongyiit Lobi</h1>
+
+  <div class="tables" id="tablesContainer"></div>
+
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
@@ -16,67 +59,42 @@
       appId: "1:186015084983:web:86f9d88e907423f5e33832"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    const tables = ['masa1', 'masa2'];
+    const rooms = ['masa1', 'masa2'];
+    const container = document.getElementById('tablesContainer');
 
-    function updateTableDisplay(tableId, score, elapsedMinutes) {
-      const el = document.getElementById(tableId);
-      el.innerHTML = `
-        <strong>${tableId.toUpperCase()}</strong><br>
-        Skor: ${score.player1} - ${score.player2}<br>
-        Süre: ${elapsedMinutes} dk<br>
-        <em>Tıkla ve Katıl</em>
-      `;
-    }
+    rooms.forEach(room => {
+      db.ref('games/' + room).on('value', snapshot => {
+        const data = snapshot.val();
+        const timeText = data?.startTime
+          ? `Oynanıyor (${Math.floor((Date.now() - data.startTime)/60000)} dk)`
+          : "Boş";
 
-    function listenToTables() {
-      tables.forEach(tableId => {
-        const tableRef = ref(db, 'games/' + tableId);
-        onValue(tableRef, (snapshot) => {
-          const data = snapshot.val();
-          const score = data?.score || { player1: 0, player2: 0 };
-          const startTime = data?.startTime || null;
-          let elapsedMinutes = 0;
+        const html = `
+          <div class="table" onclick="location.href='game.html?room=${room}'">
+            <img src="86f9f50f-d7e1-44fb-9806-a08afba91212.png" alt="${room}">
+            <div class="info">
+              <strong>${room.toUpperCase()}</strong><br>
+              Skor: ${data?.score?.player1 ?? 0} - ${data?.score?.player2 ?? 0}<br>
+              ${timeText}
+            </div>
+          </div>
+        `;
 
-          if (startTime) {
-            const now = Date.now();
-            elapsedMinutes = Math.floor((now - startTime) / 60000); // ms -> dk
-          }
-
-          updateTableDisplay(tableId, score, elapsedMinutes);
-        });
+        const existing = document.getElementById(room);
+        if (existing) {
+          existing.outerHTML = html;
+        } else {
+          const div = document.createElement("div");
+          div.className = "table";
+          div.id = room;
+          div.innerHTML = html;
+          container.appendChild(div);
+        }
       });
-    }
-
-    window.onload = () => {
-      listenToTables();
-    };
-
-    window.joinTable = (masaId) => {
-      window.location.href = `game.html?table=${masaId}`;
-    };
+    });
   </script>
-
-  <style>
-    body { font-family: sans-serif; background: #f0f0f0; text-align: center; padding: 50px; }
-    .table {
-      width: 220px; height: 120px;
-      background: #4caf50; color: white;
-      display: inline-block;
-      margin: 20px; line-height: 1.5;
-      font-size: 18px; border-radius: 10px;
-      cursor: pointer; transition: 0.3s; padding: 10px;
-    }
-    .table:hover { background: #388e3c; }
-  </style>
-</head>
-<body>
-  <h1>Bekleme Salonu</h1>
-  <p>Oynanan masaları ve skorları takip edin:</p>
-
-  <div id="masa1" class="table" onclick="joinTable('masa1')">Yükleniyor...</div>
-  <div id="masa2" class="table" onclick="joinTable('masa2')">Yükleniyor...</div>
 </body>
 </html>

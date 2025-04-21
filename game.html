@@ -1,167 +1,216 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Ping Pong JS</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
-    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
-      header div{font-size:1.2rem;}
-      .heading{font-size:1.5rem;}
+    @font-face {
+      font-family: 'Press Start 2P';
+      font-style: normal;
+      font-weight: 400;
+      src: local('Press Start 2P'),
+           url(data:font/woff2;base64,d09GMgABAAAAABIYAAwAAAAARfwAABHDAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHIJkBmAAhGwRCArwVNJjC4NCAAE2AiQDg0YEIAWESgeEUBt0NLMRVVKoVKH4vySvhuhCX5t2HJWEW4QP5QwdFJZuRSrdi8cJJsrS+3wXXjR+i9jqNVRyYHm9XD1q9hshyaxPvVe9TrKAe6nMAvBBwNfVDZjMWEJBlPs+07LKP8QN37/SMMqwRJIBdYMJRjufwQxH+ajwD3D1xCKiJp+ZuKLuu5vU1EYrQbiRBE4rz3s+7WxKJ7VdpRQcoI+OHuvcGAwGY8FP4TUZmZZ50gWyuKCLeIEc9x+Zlnl79Bo6gP3/W5rSGZ2L5FpgilJQBaTUx4Pa4wHM+jN/v2dHo8lpb3VP2itucpPv3M+l7azu8lYupcG0ThOllM6M/ALzQvOCaBBJMA3g+SbGilWZTBK+78ta/QNmYA/Z4ZhaSg0xxlo7sUaWf/qP84qDACQFGcBsQREJkD1yG6qgjQNAKDQALElk9U2gUHZEBGe+cWGIECX2PzE4BFbjxz1Ki3PBt6vOr4ALgCDjDuZKAxxJUcbsJApgSDLCAhjKbBDKCIBFEOlurelKaxZ6VtWe4gCEOMIKUVFoL0rWFNYKvaY1uj8QO90yyOjRh4D4WnzXXlo7RrwOjHSiO8d06GplzIY+xixzdMbXZVDpuOFPpiMCzDlSAITX70ke4DsJACK6B4v5if57XCCOg8HMvgcA9keaKLAMAOZyGBoVjeo6ZSyiOTrtUP5RlAEybLnqIiT2xjOHx1nmIfOYKlNNqksNqAl1owG0gW4+BvozzqxPRSgEABmUHTfLszcOep0SVafad+/6u/D+A4gGQGgI/xfjfwHPP8DzV21TqPpzuWfbn7k+c3m6AQQA2AEi3Abypusi5+fmxf9xrPmWWuigC65YZp31Zjhmrk0WWWGO5U476ZTFLuNIkyFHgSo16jTo0kMZMGTMmi079ngCLly5cedpjZnWumulx7wECRYqXIxYceKlSpMuU5YcJcqUq1ClWoNGTZq1WeW21c7aZ4H9DjvgiDuueeS6Tlucs9kNT9xyxphx95131SwPjOqy1TRTpltCnAhRksRIkCJLhSIlynRo0qJNnhFzJkxZMnOcBWcOHDnxYKOSH28+AvjyFyhEtAiRoqRIlCRZmGwFcuUpku+EQvVq1KrTolQrK8U22mCnXXYgyC10AcBzAMgXIH+g8ASULgCiACMAwAIAQGQGFApreWECPbZaG1lCQVY0WhWHK0FdLyvW3QnMKmHK3LIlWvQl6rsWaqhwilGKhuPtEhE8WgJTCiaFTlAy0Ce5JwqHTIF4ZyRRJ4sfYXWodptuWii4t1jY8fFytc5mu7qWpdJkrm4Ae758du99k24m2cyAQThqXwHX1kPamh+VfigYgzALTX/DUEO36DtbYacaKhiq6lb9D1NmNdWKMQiT3WprgacfCECbNPOmayKMLDOGUHdyK71szw0w4R1A4euL0Tpba70tmiW6Fj6XvdE/OGwttdeLNmxyDdmSXa4z1QbZGE7g18wenkCxm6/aQq8NyN+3Sxbk2sZaNQTEt77nJYBIH+2eUPOQDuATv5nZsMIO4R3s+41caniB0QfZB0vHh5rHpc3az0s7RTT7b+1rW1ePNvR+9/4UACeDuA97z6/Hwc3z7X+sta7Werl/tSlbbt3W9m31fMBANMHMAAAAA==) format('woff2');
+      unicode-range: U+0000-00FF;
+    }
+    * { box-sizing: border-box; }
+    body, html {
+      margin:0; padding:0; width:100%; height:100%;
+      background: #000; color:#fff;
+      font-family: 'Press Start 2P', Arial, sans-serif;
+      overflow:hidden;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:flex-start;
+    }
+    header {
+      width:100%; padding:1rem;
+      display:flex; justify-content:space-between;
+      align-items:center;
+    }
+    .heading { font-size:2rem; text-align:center; flex:1; }
+    .player-area { font-size:0.8rem; }
+    .player-area strong { font-size:1.2rem; margin-left:.5rem;}
     .arena {
       position:relative;
       width:900px; height:600px;
-      margin:2rem auto;
-      background:#222; border:3px dashed #0ff;
-      overflow:hidden;
+      border:3px dashed #fff;
+      background:#000;
+      flex-shrink:0;
     }
-    .player-left-paddle, .player-right-paddle, .ping-pong-ball{
-      position:absolute;
-      border-radius:4px;
+    .paddle, .ball {
+      position:absolute; background:#fff;
     }
-    .player-left-paddle {
-      width:12px; height:85px;
-      left:0; background:#0ff;
+    .paddle { width:12px; height:85px; }
+    #paddle1 { left:0; }
+    #paddle2 { right:0; }
+    .ball { width:15px; height:15px; border-radius:50%; }
+    /* touch‑pad alt kontrol çubuğu */
+    #touchpad {
+      position:fixed; bottom:0; left:50%;
+      transform:translateX(-50%);
+      width:900px; height:100px;
+      background:rgba(255,255,255,0.1);
+      touch-action:none; z-index:100;
     }
-    .player-right-paddle {
-      width:12px; height:85px;
-      right:0; background:#f0f;
+    #touchpad::before {
+      content:''; position:absolute;
+      left:50%; top:10px;
+      width:4px; height:80px;
+      background:rgba(255,255,255,0.3);
+      transform:translateX(-50%);
     }
-    .ping-pong-ball {
-      width:15px; height:15px;
-      background:#ff0;
-      box-shadow:0 0 8px #ff0;
-      margin:-7.5px;
+    @media(max-width:950px){
+      .arena, #touchpad { width:100%; }
     }
-    /* oyun alanı merkezleme */
-    .arena { transform: translateY(0); }
   </style>
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 </head>
 <body>
+
   <header>
-    <div>Player 1: <span id="score1">0</span></div>
-    <div class="heading">PING PONG</div>
-    <div>Player 2: <span id="score2">0</span></div>
+    <div class="player-area">P1: <strong id="score1">0</strong></div>
+    <div class="heading">PING PONG</div>
+    <div class="player-area">P2: <strong id="score2">0</strong></div>
   </header>
+
   <div class="arena" id="arena">
-    <div id="paddle1" class="player-left-paddle"></div>
-    <div id="ball"    class="ping-pong-ball"></div>
-    <div id="paddle2" class="player-right-paddle"></div>
+    <div class="paddle" id="paddle1"></div>
+    <div class="paddle" id="paddle2"></div>
+    <div class="ball"   id="ball"></div>
   </div>
 
+  <!-- touchpad only shown if control===3 -->
+  <div id="touchpad" style="display:none;"></div>
+
   <script>
-  // parametreleri al
-  const ps = new URLSearchParams(location.search);
-  const room = ps.get('room');
-  const role = ps.get('role');        // "player1" veya "player2"
+    // ————— CONFIG & STATE —————
+    const arena = document.getElementById('arena');
+    const pad1  = document.getElementById('paddle1');
+    const pad2  = document.getElementById('paddle2');
+    const ballE = document.getElementById('ball');
+    const S1     = document.getElementById('score1');
+    const S2     = document.getElementById('score2');
 
-  // Firebase init
-  const firebaseConfig = {
-    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-    authDomain: "masa-tenisi-v1.firebaseapp.com",
-    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "masa-tenisi-v1",
-    storageBucket: "masa-tenisi-v1.appspot.com",
-    messagingSenderId: "186015084983",
-    appId: "1:186015084983:web:86f9d88e907423f5e33832"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-  const paddlesRef = db.ref(`rooms/${room}/paddles`);
-  const ballRef    = db.ref(`rooms/${room}/ball`);
-  const scoreRef   = db.ref(`rooms/${room}/score`);
+    const arenaW = arena.clientWidth;
+    const arenaH = arena.clientHeight;
+    const padW   = 12, padH = 85, ballR = 15;
+    const winScore = 5;
 
-  // sabitler
-  const arenaW=900, arenaH=600, padW=12, padH=85, ballR=7.5;
-  const paddle = { player1: (arenaH-padH)/2, player2: (arenaH-padH)/2 };
-  let ball   = { x:arenaW/2, y:arenaH/2, vx:250, vy:250 };
-  let score  = { p1:0, p2:0 };
-  let keys   = {};
+    let posP1 = (arenaH-padH)/2, posP2 = (arenaH-padH)/2;
+    let vipX = (arenaW-ballR)/2, vipY = (arenaH-ballR)/2;
+    let velX, velY;
+    let score1=0, score2=0;
+    let control = parseInt(prompt(
+      "Kontrol Şekli Seçin:\n1) Klavye\n2) Fare (P2)\n3) Dokunmatik (P2)"
+    ),10) || 1;
+    let touchpad = document.getElementById('touchpad');
 
-  // host=*/player1 physics loop
-  if(role==='player1'){
-    // başlatırken topa rastgele yön
+    // ————— STARTUP —————
     function resetBall(){
-      ball.x = arenaW/2; ball.y = arenaH/2;
-      ball.vx = 250*(Math.random()<0.5?1:-1);
-      ball.vy = 250*(Math.random()<0.5?1:-1);
+      vipX = (arenaW-ballR)/2;
+      vipY = (arenaH-ballR)/2;
+      const s = 4 + Math.random()*2;
+      velX = (Math.random()<0.5?1:-1)*s;
+      velY = (Math.random()<0.5?1:-1)*s;
     }
     resetBall();
-    let last=performance.now();
-    function frame(now){
-      const dt=(now-last)/1000; last=now;
-      // paddle1 kontrol
-      if(keys['w']||keys['ArrowUp'])   paddle.player1=Math.max(0,paddle.player1-300*dt);
-      if(keys['s']||keys['ArrowDown']) paddle.player1=Math.min(arenaH-padH,paddle.player1+300*dt);
-      paddlesRef.child('player1').set(paddle.player1);
-      // paddle2’yi oku
-      paddlesRef.child('player2').once('value',s=>{
-        if(s.exists()) paddle.player2=s.val();
+
+    // show touchpad if needed
+    if(control===3) touchpad.style.display='block';
+
+    // ————— INPUT HANDLERS —————
+    // Keyboard: W/S => P1, ↑/↓ => P2
+    if(control===1){
+      window.addEventListener('keydown', e=>{
+        if(e.key==='w') pad1.speed=-6;
+        if(e.key==='s') pad1.speed= 6;
+        if(e.key==='ArrowUp')    pad2.speed=-6;
+        if(e.key==='ArrowDown')  pad2.speed= 6;
       });
-      // top hareketi
-      ball.x += ball.vx*dt;
-      ball.y += ball.vy*dt;
-      // üst-alt duvar
-      if(ball.y<=ballR||ball.y>=arenaH-ballR) ball.vy*=-1;
-      // sol gol
-      if(ball.x<=padW+ballR){
-        if(ball.y< paddle.player1||ball.y>paddle.player1+padH){
-          score.p2++; resetBall();
-        } else { ball.vx=Math.abs(ball.vx); }
-      }
-      // sağ gol
-      if(ball.x>=arenaW-padW-ballR){
-        if(ball.y< paddle.player2||ball.y>paddle.player2+padH){
-          score.p1++; resetBall();
-        } else { ball.vx=-Math.abs(ball.vx); }
-      }
-      // DB’ye yaz
-      ballRef.set(ball);
-      scoreRef.set(score);
-      requestAnimationFrame(frame);
+      window.addEventListener('keyup', e=>{
+        ['w','s'].includes(e.key) && (pad1.speed=0);
+        ['ArrowUp','ArrowDown'].includes(e.key) && (pad2.speed=0);
+      });
     }
-    requestAnimationFrame(frame);
-  }
 
-  // bütün client’lar → render + player2 kontrol
-  paddle.player1 = paddle.player2 = (arenaH-padH)/2;
-  ball = { x:arenaW/2, y:arenaH/2, vx:0, vy:0 };
-  score= { p1:0,p2:0 };
+    // Mouse: P2 follows Y
+    if(control===2){
+      window.addEventListener('mousemove', e=>{
+        const r = arena.getBoundingClientRect();
+        let y = e.clientY - r.top - padH/2;
+        posP2 = Math.max(0, Math.min(arenaH-padH, y));
+      });
+    }
 
-  paddlesRef.child('player1').on('value',s=>{ if(s.exists()) paddle.player1=s.val(); render(); });
-  paddlesRef.child('player2').on('value',s=>{ if(s.exists()) paddle.player2=s.val(); render(); });
-  ballRef.on('value',s=>{ if(s.exists()) ball=s.val(); render(); });
-  scoreRef.on('value',s=>{ if(s.exists()){
-    score=s.val();
-    document.getElementById('score1').textContent=score.p1;
-    document.getElementById('score2').textContent=score.p2;
-  }})
+    // Touchpad: P2 via bottom bar
+    if(control===3){
+      touchpad.addEventListener('touchstart',onTouch,{passive:false});
+      touchpad.addEventListener('touchmove', onTouch,{passive:false});
+      function onTouch(ev){
+        ev.preventDefault();
+        const t = ev.touches[0];
+        const r = touchpad.getBoundingClientRect();
+        let pct = (t.clientX - r.left)/r.width;
+        let y = pct*(arenaH-padH);
+        posP2 = Math.max(0, Math.min(arenaH-padH, y));
+      }
+    }
 
-  function render(){
-    document.getElementById('paddle1').style.top  = paddle.player1+'px';
-    document.getElementById('paddle2').style.top  = paddle.player2+'px';
-    document.getElementById('ball').style.left    = ball.x+'px';
-    document.getElementById('ball').style.top     = ball.y+'px';
-  }
+    // ————— GAME LOOP —————
+    function step(){
+      // paddles via keyboard:
+      posP1 += pad1.speed||0;
+      posP2 += pad2.speed||0;
+      posP1 = Math.max(0, Math.min(arenaH-padH, posP1));
+      // ball movement:
+      vipX += velX;
+      vipY += velY;
+      // top/bottom bounce:
+      if(vipY<=0||vipY>=arenaH-ballR){
+        velY=-velY;
+      }
+      // left paddle collision / score:
+      if(vipX<=padW){
+        if(vipY+ballR>posP1 && vipY<posP1+padH){
+          velX=-velX;
+        } else {
+          score2++; updateScore();
+        }
+      }
+      // right paddle collision / score:
+      if(vipX>=arenaW-ballR-padW){
+        if(vipY+ballR>posP2 && vipY<posP2+padH){
+          velX=-velX;
+        } else {
+          score1++; updateScore();
+        }
+      }
+      // render:
+      pad1.style.top = posP1+'px';
+      pad2.style.top = posP2+'px';
+      ballE.style.left = vipX+'px';
+      ballE.style.top  = vipY+'px';
 
-  // klavye dinle
-  window.addEventListener('keydown',e=>keys[e.key]=true);
-  window.addEventListener('keyup',  e=>keys[e.key]=false);
+      // win check:
+      if(score1>=winScore||score2>=winScore){
+        clearInterval(loop);
+        alert((score1>score2?'Player 1':'Player 2')+" kazandı!");
+        score1=score2=0; updateScore();
+        resetBall();
+        loop = setInterval(step,16);
+      }
+    }
+    function updateScore(){
+      S1.textContent=score1;
+      S2.textContent=score2;
+      // after a goal, pause 1s then reset ball
+      clearInterval(loop);
+      setTimeout(()=>{
+        resetBall();
+        loop = setInterval(step,16);
+      },1000);
+    }
 
-  // player2 fareyle kontrol
-  if(role==='player2'){
-    document.getElementById('arena').addEventListener('mousemove',e=>{
-      const r=e.target.getBoundingClientRect();
-      let y=e.clientY - r.top - padH/2;
-      y=Math.max(0,Math.min(arenaH-padH,y));
-      paddlesRef.child('player2').set(y);
-    });
-  }
+    let loop = setInterval(step,16);
   </script>
 </body>
 </html>

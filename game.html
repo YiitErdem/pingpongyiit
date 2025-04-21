@@ -1,75 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Ping Pong JS</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Realtime Ping Pong</title>
   <style>
-    @font-face {
-      font-family: 'Press Start 2P';
-      font-style: normal;
-      font-weight: 400;
-      src: local('Press Start 2P'),
-           url(data:font/woff2;base64,d09GMgABAAAAABIYAAwAAAAARfwAABHDAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHIJkBmAAhGwRCArwVNJjC4NCAAE2AiQDg0YEIAWESgeEUBt0NLMRVVKoVKH4vySvhuhCX5t2HJWEW4QP5QwdFJZuRSrdi8cJJsrS+3wXXjR+i9jqNVRyYHm9XD1q9hshyaxPvVe9TrKAe6nMAvBBwNfVDZjMWEJBlPs+07LKP8QN37/SMMqwRJIBdYMJRjufwQxH+ajwD3D1xCKiJp+ZuKLuu5vU1EYrQbiRBE4rz3s+7WxKJ7VdpRQcoI+OHuvcGAwGY8FP4TUZmZZ50gWyuKCLeIEc9x+Zlnl79Bo6gP3/W5rSGZ2L5FpgilJQBaTUx4Pa4wHM+jN/v2dHo8lpb3VP2itucpPv3M+l7azu8lYupcG0ThOllM6M/ALzQvOCaBBJMA3g+SbGilWZTBK+78ta/QNmYA/Z4ZhaSg0xxlo7sUaWf/qP84qDACQFGcBsQREJkD1yG6qgjQNAKDQALElk9U2gUHZEBGe+cWGIECX2PzE4BFbjxz1Ki3PBt6vOr4ALgCDjDuZKAxxJUcbsJApgSDLCAhjKbBDKCIBFEOlurelKaxZ6VtWe4gCEOMIKUVFoL0rWFNYKvaY1uj8QO90yyOjRh4D4WnzXXlo7RrwOjHSiO8d06GplzIY+xixzdMbXZVDpuOFPpiMCzDlSAITX70ke4DsJACK6B4v5if57XCCOg8HMvgcA9keaKLAMAOZyGBoVjeo6ZSyiOTrtUP5RlAEybLnqIiT2xjOHx1nmIfOYKlNNqksNqAl1owG0gW4+BvozzqxPRSgEABmUHTfLszcOep0SVafad+/6u/D+A4gGQGgI/xfjfwHPP8DzV21TqPpzuWfbn7k+c3m6AQQA2AEi3Abypusi5+fmxf9xrPmWWuigC65YZp31Zjhmrk0WWWGO5U476ZTFLuNIkyFHgSo16jTo0kMZMGTMmi079ngCLly5cedpjZnWumulx7wECRYqXIxYceKlSpMuU5YcJcqUq1ClWoNGTZq1WeW21c7aZ4H9DjvgiDuueeS6Tlucs9kNT9xyxphx95131SwPjOqy1TRTpltCnAhRksRIkCJLhSIlynRo0qJNnhFzJkxZMnOcBWcOHDnxYKOSH28+AvjyFyhEtAiRoqRIlCRZmGwFcuUpku+EQvVq1KrTolQrK8U22mCnXXYgyC10AcBzAMgXIH+g8ASULgCiACMAwAIAQGQGFApreWECPbZaG1lCQVY0WhWHK0FdLyvW3QnMKmHK3LIlWvQl6rsWaqhwilGKhuPtEhE8WgJTCiaFTlAy0Ce5JwqHTIF4ZyRRJ4sfYXWodptuWii4t1jY8fFytc5mu7qWpdJkrm4Ae758du99k24m2cyAQThqXwHX1kPamh+VfigYgzALTX/DUEO36DtbYacaKhiq6lb9D1NmNdWKMQiT3WprgacfCECbNPOmayKMLDOGUHdyK71szw0w4R1A4euL0Tpba70tmiW6Fj6XvdE/OGwttdeLNmxyDdmSXa4z1QbZGE7g18wenkCxm6/aQq8NyN+3Sxbk2sZaNQTEt77nJYBIH+2eUPOQDuATv5nZsMIO4R3s+41caniB0QfZB0vHh5rHpc3az0s7RTT7b+1rW1ePNvR+9/4UACeDuA97z6/Hwc3z7X+sta7Werl/tSlbbt3W9m31fMBANMHMAAAAA==) format('woff2');
-      unicode-range: U+0000-00FF;
-    }
-    * { box-sizing: border-box; }
-    body, html {
-      margin:0; padding:0; width:100%; height:100%;
-      background: #000; color:#fff;
-      font-family: 'Press Start 2P', Arial, sans-serif;
-      overflow:hidden;
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:flex-start;
-    }
-    header {
-      width:100%; padding:1rem;
-      display:flex; justify-content:space-between;
-      align-items:center;
-    }
-    .heading { font-size:2rem; text-align:center; flex:1; }
-    .player-area { font-size:0.8rem; }
-    .player-area strong { font-size:1.2rem; margin-left:.5rem;}
-    .arena {
-      position:relative;
-      width:900px; height:600px;
-      border:3px dashed #fff;
-      background:#000;
-      flex-shrink:0;
-    }
-    .paddle, .ball {
-      position:absolute; background:#fff;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width:100%; height:100%; background:#000; color:#fff; font-family:Arial,sans-serif; display:flex; flex-direction:column; }
+    header { padding:1rem; display:flex; justify-content:space-between; font-size:1.2rem; }
+    .arena { position:relative; margin:auto; width:900px; height:600px; border:3px dashed #fff; }
+    .paddle, .ball { position:absolute; background:#fff; }
     .paddle { width:12px; height:85px; }
     #paddle1 { left:0; }
     #paddle2 { right:0; }
     .ball { width:15px; height:15px; border-radius:50%; }
-    /* touch‑pad alt kontrol çubuğu */
-    #touchpad {
-      position:fixed; bottom:0; left:50%;
-      transform:translateX(-50%);
-      width:900px; height:100px;
-      background:rgba(255,255,255,0.1);
-      touch-action:none; z-index:100;
+    #touchpad { position:fixed; bottom:0; left:50%; width:900px; height:100px; background:rgba(255,255,255,0.1); transform:translateX(-50%); touch-action:none; display:none; }
+    #touchpad::before { content:''; position:absolute; left:50%; top:10px; width:4px; height:80px; background:rgba(255,255,255,0.3); transform:translateX(-50%); }
+    @media(max-width:950px) { .arena, #touchpad { width:100%; } }
+
+    /* bildirim kutucuğu */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 1rem 1.5rem;
+      border-radius: 5px;
+      font-size: 1rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .4s ease;
     }
-    #touchpad::before {
-      content:''; position:absolute;
-      left:50%; top:10px;
-      width:4px; height:80px;
-      background:rgba(255,255,255,0.3);
-      transform:translateX(-50%);
-    }
-    @media(max-width:950px){
-      .arena, #touchpad { width:100%; }
+    #toast.show {
+      opacity: 1;
     }
   </style>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
   <header>
-    <div class="player-area">P1: <strong id="score1">0</strong></div>
-    <div class="heading">PING PONG</div>
-    <div class="player-area">P2: <strong id="score2">0</strong></div>
+    <div>P1: <strong id="score1">0</strong></div>
+    <div style="font-family:monospace;">Realtime Ping Pong</div>
+    <div>P2: <strong id="score2">0</strong></div>
   </header>
 
   <div class="arena" id="arena">
@@ -78,139 +54,169 @@
     <div class="ball"   id="ball"></div>
   </div>
 
-  <!-- touchpad only shown if control===3 -->
-  <div id="touchpad" style="display:none;"></div>
+  <div id="touchpad"></div>
+  <div id="toast"></div>
 
   <script>
-    // ————— CONFIG & STATE —————
-    const arena = document.getElementById('arena');
-    const pad1  = document.getElementById('paddle1');
-    const pad2  = document.getElementById('paddle2');
-    const ballE = document.getElementById('ball');
-    const S1     = document.getElementById('score1');
-    const S2     = document.getElementById('score2');
+  (function(){
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    const arenaW = arena.clientWidth;
-    const arenaH = arena.clientHeight;
-    const padW   = 12, padH = 85, ballR = 15;
-    const winScore = 5;
-
-    let posP1 = (arenaH-padH)/2, posP2 = (arenaH-padH)/2;
-    let vipX = (arenaW-ballR)/2, vipY = (arenaH-ballR)/2;
-    let velX, velY;
-    let score1=0, score2=0;
-    let control = parseInt(prompt(
-      "Kontrol Şekli Seçin:\n1) Klavye\n2) Fare (P2)\n3) Dokunmatik (P2)"
-    ),10) || 1;
-    let touchpad = document.getElementById('touchpad');
-
-    // ————— STARTUP —————
-    function resetBall(){
-      vipX = (arenaW-ballR)/2;
-      vipY = (arenaH-ballR)/2;
-      const s = 4 + Math.random()*2;
-      velX = (Math.random()<0.5?1:-1)*s;
-      velY = (Math.random()<0.5?1:-1)*s;
-    }
-    resetBall();
-
-    // show touchpad if needed
-    if(control===3) touchpad.style.display='block';
-
-    // ————— INPUT HANDLERS —————
-    // Keyboard: W/S => P1, ↑/↓ => P2
-    if(control===1){
-      window.addEventListener('keydown', e=>{
-        if(e.key==='w') pad1.speed=-6;
-        if(e.key==='s') pad1.speed= 6;
-        if(e.key==='ArrowUp')    pad2.speed=-6;
-        if(e.key==='ArrowDown')  pad2.speed= 6;
-      });
-      window.addEventListener('keyup', e=>{
-        ['w','s'].includes(e.key) && (pad1.speed=0);
-        ['ArrowUp','ArrowDown'].includes(e.key) && (pad2.speed=0);
-      });
+    // URL param helper
+    function qs(key, def){
+      const p = new URLSearchParams(location.search);
+      return p.get(key) || def;
     }
 
-    // Mouse: P2 follows Y
-    if(control===2){
-      window.addEventListener('mousemove', e=>{
-        const r = arena.getBoundingClientRect();
-        let y = e.clientY - r.top - padH/2;
-        posP2 = Math.max(0, Math.min(arenaH-padH, y));
-      });
+    // rol & kontrol modu sor
+    const room = qs('room','main');
+    const role = parseInt(prompt(
+      "Role seçin:\n1) Player 1 (host)\n2) Player 2\n3) Viewer"
+    ),10) || 3;
+    const ctrl = parseInt(prompt(
+      "Control modu seçin:\n1) Klavye\n2) Fare\n3) Dokunmatik (touchpad)"
+    ),10) || 1;
+
+    // elemanlar
+    const arenaE = document.getElementById('arena');
+    const pad1E  = document.getElementById('paddle1');
+    const pad2E  = document.getElementById('paddle2');
+    const ballE  = document.getElementById('ball');
+    const s1E    = document.getElementById('score1');
+    const s2E    = document.getElementById('score2');
+    const tpE    = document.getElementById('touchpad');
+    const toastE = document.getElementById('toast');
+
+    const W = arenaE.clientWidth, H = arenaE.clientHeight;
+    const pw=12, ph=85, br=15, win=5;
+
+    // tatlı bildirim (toast)
+    function showToast(msg){
+      toastE.textContent = msg;
+      toastE.classList.add('show');
+      setTimeout(()=> toastE.classList.remove('show'), 2000);
     }
 
-    // Touchpad: P2 via bottom bar
-    if(control===3){
-      touchpad.addEventListener('touchstart',onTouch,{passive:false});
-      touchpad.addEventListener('touchmove', onTouch,{passive:false});
-      function onTouch(ev){
-        ev.preventDefault();
-        const t = ev.touches[0];
-        const r = touchpad.getBoundingClientRect();
-        let pct = (t.clientX - r.left)/r.width;
-        let y = pct*(arenaH-padH);
-        posP2 = Math.max(0, Math.min(arenaH-padH, y));
+    // lokal state (host)
+    let vx, vy;
+    let local = {
+      p1:(H-ph)/2,
+      p2:(H-ph)/2,
+      x:(W-br)/2,
+      y:(H-br)/2,
+      s1:0, s2:0
+    };
+
+    // host ilk yazma
+    if(role===1){
+      vx=5; vy=5;
+      db.ref(`rooms/${room}`).set(local);
+    }
+
+    // touchpad göster
+    if(ctrl===3 && (role===1||role===2)) tpE.style.display='block';
+
+    // input handling
+    function clampPs(){
+      local.p1 = Math.max(0,Math.min(H-ph,local.p1));
+      local.p2 = Math.max(0,Math.min(H-ph,local.p2));
+    }
+    function writePaddles(){
+      db.ref(`rooms/${room}`).update({ p1:local.p1, p2:local.p2 });
+    }
+
+    if(role===1||role===2){
+      if(ctrl===1){ // klavye
+        window.addEventListener('keydown', e=>{
+          if(role===1){
+            if(e.key==='w') local.p1-=6;
+            if(e.key==='s') local.p1+=6;
+          }
+          if(role===2){
+            if(e.key==='ArrowUp')   local.p2-=6;
+            if(e.key==='ArrowDown') local.p2+=6;
+          }
+          clampPs(); writePaddles();
+        });
+      }
+      if(ctrl===2){ // fare
+        window.addEventListener('mousemove', e=>{
+          const r=arenaE.getBoundingClientRect();
+          const y=e.clientY-r.top-ph/2;
+          if(role===1) local.p1=y; else local.p2=y;
+          clampPs(); writePaddles();
+        });
+      }
+      if(ctrl===3){ // touchpad
+        tpE.addEventListener('touchmove', e=>{
+          e.preventDefault();
+          const t=e.touches[0], r=tpE.getBoundingClientRect();
+          const pct=(t.clientX-r.left)/r.width;
+          const y=pct*(H-ph);
+          if(role===1) local.p1=y; else local.p2=y;
+          clampPs(); writePaddles();
+        });
       }
     }
 
-    // ————— GAME LOOP —————
-    function step(){
-      // paddles via keyboard:
-      posP1 += pad1.speed||0;
-      posP2 += pad2.speed||0;
-      posP1 = Math.max(0, Math.min(arenaH-padH, posP1));
-      // ball movement:
-      vipX += velX;
-      vipY += velY;
-      // top/bottom bounce:
-      if(vipY<=0||vipY>=arenaH-ballR){
-        velY=-velY;
-      }
-      // left paddle collision / score:
-      if(vipX<=padW){
-        if(vipY+ballR>posP1 && vipY<posP1+padH){
-          velX=-velX;
-        } else {
-          score2++; updateScore();
+    // host fizik + skor
+    let hostLoop;
+    if(role===1){
+      hostLoop = setInterval(()=>{
+        local.x+=vx; local.y+=vy;
+        if(local.y<=0||local.y>=H-br) vy=-vy;
+        // sol
+        if(local.x<=pw){
+          if(local.y+br>local.p1&&local.y<local.p1+ph) vx=-vx;
+          else{ local.s2++; scoreReset(); }
         }
-      }
-      // right paddle collision / score:
-      if(vipX>=arenaW-ballR-padW){
-        if(vipY+ballR>posP2 && vipY<posP2+padH){
-          velX=-velX;
-        } else {
-          score1++; updateScore();
+        // sağ
+        if(local.x>=W-br-pw){
+          if(local.y+br>local.p2&&local.y<local.p2+ph) vx=-vx;
+          else{ local.s1++; scoreReset(); }
         }
-      }
-      // render:
-      pad1.style.top = posP1+'px';
-      pad2.style.top = posP2+'px';
-      ballE.style.left = vipX+'px';
-      ballE.style.top  = vipY+'px';
-
-      // win check:
-      if(score1>=winScore||score2>=winScore){
-        clearInterval(loop);
-        alert((score1>score2?'Player 1':'Player 2')+" kazandı!");
-        score1=score2=0; updateScore();
-        resetBall();
-        loop = setInterval(step,16);
-      }
+        // kazanan?
+        if(local.s1>=win||local.s2>=win){
+          showToast((local.s1>local.s2?'Player 1':'Player 2')+" kazandı!");
+          local.s1=local.s2=0;
+        }
+        db.ref(`rooms/${room}`).set(local);
+      },16);
     }
-    function updateScore(){
-      S1.textContent=score1;
-      S2.textContent=score2;
-      // after a goal, pause 1s then reset ball
-      clearInterval(loop);
+
+    function scoreReset(){
+      clearInterval(hostLoop);
+      showToast("Gol!");
       setTimeout(()=>{
-        resetBall();
-        loop = setInterval(step,16);
+        local.x=(W-br)/2; local.y=(H-br)/2;
+        vx = 5*(Math.random()<0.5?1:-1);
+        vy = 5*(Math.random()<0.5?1:-1);
+        hostLoop = setInterval(hostLoop._onTimeout,16);
       },1000);
     }
 
-    let loop = setInterval(step,16);
+    // render (herkes)
+    db.ref(`rooms/${room}`).on('value', snap=>{
+      const st=snap.val();
+      if(!st) return;
+      pad1E.style.top=st.p1+'px';
+      pad2E.style.top=st.p2+'px';
+      ballE.style.left=st.x+'px'; ballE.style.top=st.y+'px';
+      s1E.textContent=st.s1; s2E.textContent=st.s2;
+      if(role===1) local=st;
+    });
+
+  })();
   </script>
 </body>
 </html>

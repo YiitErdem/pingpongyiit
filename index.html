@@ -5,23 +5,29 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Ping Pong Lobby</title>
 
-  <!-- Bootstrap CDN for quick layout -->
+  <!-- Bootstrap for quick styling -->
   <link
     href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.2.0/css/bootstrap.min.css"
     rel="stylesheet"
   />
 
-  <!-- 1) Firebase SDKs -->
-  <script
-    src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"
-  ></script>
-  <script
-    src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"
-  ></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 
-  <!-- 2) Inline your Firebase config & init -->
+  <style>
+    body { background: #222; color: #fff; padding: 2rem; }
+    .room { margin-bottom: 2rem; }
+    .card { background: #333; }
+    .btn-room { margin-right: 0.5rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1 class="mb-4">Ping Pong Lobby</h1>
+  <div id="rooms" class="row gy-4"></div>
+
   <script>
-    // ←– replace these values with your own from the console:
+    // — your Firebase config —
     const firebaseConfig = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
@@ -32,47 +38,15 @@
       messagingSenderId: "186015084983",
       appId: "1:186015084983:web:86f9d88e907423f5e33832",
     };
-    // initialize:
     firebase.initializeApp(firebaseConfig);
-  </script>
-
-  <style>
-    body {
-      background: #222;
-      color: #fff;
-      padding: 2rem;
-    }
-    .room {
-      margin-bottom: 2rem;
-    }
-    .room .card {
-      background: #333;
-    }
-    .btn-room {
-      margin-right: 0.5rem;
-      margin-top: 1rem;
-    }
-  </style>
-</head>
-<body>
-  <h1 class="mb-4">Ping Pong Lobby</h1>
-
-  <div id="rooms" class="row gy-4">
-    <!-- JS will inject two room cards here -->
-  </div>
-
-  <script>
-    // --- 1) Define your two fixed rooms:
-    const roomList = ["masa1", "masa2"];
-
-    // --- 2) Grab a reference to your RTDB root:
     const db = firebase.database();
 
-    // --- 3) Reference to the container DIV:
+    // fixed rooms
+    const rooms = ["masa1", "masa2"];
     const container = document.getElementById("rooms");
 
-    roomList.forEach((room) => {
-      // 3a) Build the HTML structure for each room:
+    rooms.forEach((room) => {
+      // build card
       const col = document.createElement("div");
       col.className = "col-md-6 room";
       col.innerHTML = `
@@ -94,7 +68,7 @@
         </div>`;
       container.appendChild(col);
 
-      // 3b) Wire up references:
+      // references
       const p1Label = document.getElementById(`${room}-p1`);
       const p2Label = document.getElementById(`${room}-p2`);
       const btnP1 = document.getElementById(`${room}-btn-p1`);
@@ -102,34 +76,26 @@
       const btnVW = document.getElementById(`${room}-btn-vw`);
       const playersRef = db.ref(`rooms/${room}/players`);
 
-      // 3c) Listen for realtime slot changes:
+      // realtime slot updates
       playersRef.on("value", (snap) => {
-        const players = snap.val() || {};
-        p1Label.textContent = players.player1 ? "✔ joined" : "––";
-        p2Label.textContent = players.player2 ? "✔ joined" : "––";
-        btnP1.disabled = !!players.player1;
-        btnP2.disabled = !!players.player2;
+        const pl = snap.val() || {};
+        p1Label.textContent = pl.player1 ? "✔ joined" : "––";
+        p2Label.textContent = pl.player2 ? "✔ joined" : "––";
+        btnP1.disabled = !!pl.player1;
+        btnP2.disabled = !!pl.player2;
       });
 
-      // 3d) Joining logic:
-      btnP1.onclick = () => {
-        playersRef
-          .child("player1")
-          .set({ joined: Date.now() })
-          .then(() => {
-            window.location.href = `game.html?room=${room}&role=player1`;
-          });
-      };
-      btnP2.onclick = () => {
-        playersRef
-          .child("player2")
-          .set({ joined: Date.now() })
-          .then(() => {
-            window.location.href = `game.html?room=${room}&role=player2`;
-          });
-      };
+      // join handlers
+      btnP1.onclick = () =>
+        playersRef.child("player1").set(true).then(() => {
+          window.location = `game.html?room=${room}&role=player1`;
+        });
+      btnP2.onclick = () =>
+        playersRef.child("player2").set(true).then(() => {
+          window.location = `game.html?room=${room}&role=player2`;
+        });
       btnVW.onclick = () => {
-        window.location.href = `viewer.html?room=${room}`;
+        window.location = `viewer.html?room=${room}`;
       };
     });
   </script>

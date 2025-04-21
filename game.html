@@ -2,335 +2,165 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ping Pong Game</title>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ping Pong Game</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
+    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
+      header div{font-size:1.2rem;}
+      .heading{font-size:1.5rem;}
+    .arena {
+      position:relative;
+      width:900px; height:600px;
+      margin:2rem auto;
+      background:#222; border:3px dashed #0ff;
+      overflow:hidden;
+    }
+    .player-left-paddle, .player-right-paddle, .ping-pong-ball{
+      position:absolute;
+      border-radius:4px;
+    }
+    .player-left-paddle {
+      width:12px; height:85px;
+      left:0; background:#0ff;
+    }
+    .player-right-paddle {
+      width:12px; height:85px;
+      right:0; background:#f0f;
+    }
+    .ping-pong-ball {
+      width:15px; height:15px;
+      background:#ff0;
+      box-shadow:0 0 8px #ff0;
+      margin:-7.5px;
+    }
+    /* oyun alanı merkezleme */
+    .arena { transform: translateY(0); }
+  </style>
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
-  <style>
-    * { box-sizing:border-box; margin:0; padding:0; }
-    body { background:#000; color:#fff; font-family:'Press Start 2P',monospace; overflow:hidden; }
-    header { text-align:center; padding:1rem; }
-    .scores { display:flex; justify-content:space-between; padding:0 1rem; font-size:1rem; }
-    #arena {
-      position:fixed;
-      top:50%; left:50%;
-      width:600px; height:900px;
-      margin:-450px 0 0 -300px;
-      background:#333; border:3px dashed #fff;
-      touch-action:none;
-    }
-    .paddle, .ball { position:absolute; background:#fff; }
-    .paddle { width:85px; height:12px; }
-    .ball { width:15px; height:15px; border-radius:50%; }
-    #paddle-bottom { bottom:0; }
-    #paddle-top    { top:0; }
-    /* TOFAŞ yazısı */
-    .overlay-text {
-      position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%) rotate(-45deg);
-      color:rgba(255,255,255,0.1);
-      font-size:40px; white-space:nowrap;
-      pointer-events:none; user-select:none;
-    }
-    /* Geri sayım */
-    #countdown {
-      position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      color:#fff; font-size:80px;
-      z-index:12; display:none;
-      pointer-events:none;
-    }
-    #touchPad {
-      position:fixed; bottom:0; left:0;
-      width:100%; height:120px;
-      background:rgba(255,255,255,0.05);
-      z-index:5; touch-action:none;
-    }
-    .dialog {
-      position:fixed; top:0; left:0;
-      width:100%; height:100%;
-      background:rgba(0,0,0,0.8);
-      display:flex; align-items:center; justify-content:center;
-      z-index:10; text-align:center;
-    }
-    .dialog.hide { display:none; }
-    .dialog button { margin-top:1rem; padding:0.5rem 1rem; cursor:pointer; }
-    #controlPanel {
-      position:fixed; bottom:140px; right:1rem;
-      background:rgba(255,255,255,0.1);
-      padding:0.5rem; font-size:0.7rem;
-      max-width:200px;
-    }
-    #controlPanel h3 { margin:0 0 0.3rem; font-size:0.8rem; }
-    #controlPanel ul { list-style:none; padding:0; margin:0 0 0.5rem; max-height:80px; overflow:auto; }
-    #controlPanel button { width:100%; margin:0.2rem 0; padding:0.3rem; cursor:pointer; }
-    #voteStatus { text-align:center; margin:0.3rem 0 0; }
-  </style>
 </head>
 <body>
   <header>
-    <div class="scores">
-      <div>Player 1: <span id="score1">0</span></div>
-      <div>Player 2: <span id="score2">0</span></div>
-    </div>
-    <h1>Ping Pong</h1>
+    <div>Player 1: <span id="score1">0</span></div>
+    <div class="heading">PING PONG</div>
+    <div>Player 2: <span id="score2">0</span></div>
   </header>
-
-  <div id="arena">
-    <div class="overlay-text">
-      TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ TOFAŞ 
-    </div>
-    <div id="paddle-bottom" class="paddle"></div>
-    <div id="ball" class="ball"></div>
-    <div id="paddle-top" class="paddle"></div>
-    <div id="countdown">3</div>
-  </div>
-  <div id="touchPad"></div>
-
-  <div class="dialog" id="dialog">
-    <div>
-      <p id="dialogText">Press READY when you’re set</p>
-      <button id="readyBtn">READY</button>
-    </div>
-  </div>
-
-  <div id="controlPanel">
-    <h3>Son Oyunlar</h3>
-    <ul id="historyList"></ul>
-    <button id="stopBtn">Stop</button>
-    <button id="restartVoteBtn">Restart Vote</button>
-    <p id="voteStatus">Votes: 0/2</p>
+  <div class="arena" id="arena">
+    <div id="paddle1" class="player-left-paddle"></div>
+    <div id="ball"    class="ping-pong-ball"></div>
+    <div id="paddle2" class="player-right-paddle"></div>
   </div>
 
   <script>
-  // — Firebase init —
+  // parametreleri al
+  const ps = new URLSearchParams(location.search);
+  const room = ps.get('room');
+  const role = ps.get('role');        // "player1" veya "player2"
+
+  // Firebase init
   const firebaseConfig = {
     apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
     authDomain: "masa-tenisi-v1.firebaseapp.com",
-    databaseURL:
-      "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "masa-tenisi-v1",
     storageBucket: "masa-tenisi-v1.appspot.com",
     messagingSenderId: "186015084983",
-    appId: "1:186015084983:web:86f9d88e907423f5e33832",
+    appId: "1:186015084983:web:86f9d88e907423f5e33832"
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
+  const paddlesRef = db.ref(`rooms/${room}/paddles`);
+  const ballRef    = db.ref(`rooms/${room}/ball`);
+  const scoreRef   = db.ref(`rooms/${room}/score`);
 
-  // URL params
-  const p = new URLSearchParams(location.search);
-  const room = p.get("room"), role = p.get("role");
-  const bottomRole = role, topRole = role==="player1" ? "player2" : "player1";
+  // sabitler
+  const arenaW=900, arenaH=600, padW=12, padH=85, ballR=7.5;
+  const paddle = { player1: (arenaH-padH)/2, player2: (arenaH-padH)/2 };
+  let ball   = { x:arenaW/2, y:arenaH/2, vx:250, vy:250 };
+  let score  = { p1:0, p2:0 };
+  let keys   = {};
 
-  // refs
-  const rootRef      = db.ref(`rooms/${room}`);
-  const readyRef     = rootRef.child("ready");
-  const paddlesRef   = rootRef.child("paddles");
-  const ballRef      = rootRef.child("ball");
-  const scoreRef     = rootRef.child("scores");
-  const pausedRef    = rootRef.child("paused");
-  const historyRef   = rootRef.child("history");
-  const resetVoteRef = rootRef.child("resetVote");
-
-  // cleanup on leave
-  window.addEventListener("beforeunload", ()=>{
-    readyRef.child(role).remove();
-    paddlesRef.child(role).remove();
-    resetVoteRef.child(role).remove();
-  });
-
-  // dialog & ready
-  const dialog   = document.getElementById("dialog");
-  const readyBtn = document.getElementById("readyBtn");
-  const dt       = document.getElementById("dialogText");
-  let amReady=false;
-  readyBtn.onclick = ()=>{
-    readyRef.child(role).set(true);
-    amReady=true;
-    readyBtn.disabled=true;
-    dt.textContent="Waiting for opponent…";
-  };
-  readyRef.on("value",snap=>{
-    const r = snap.val()||{}, c=Object.keys(r).length;
-    if(!amReady) dt.textContent=`Ready: ${c}/2`;
-    if(r.player1&&r.player2){
-      dialog.classList.add("hide");
-      initMasterLoop();
-      initLocalLoop();
-      initTouchControl();
+  // host=*/player1 physics loop
+  if(role==='player1'){
+    // başlatırken topa rastgele yön
+    function resetBall(){
+      ball.x = arenaW/2; ball.y = arenaH/2;
+      ball.vx = 250*(Math.random()<0.5?1:-1);
+      ball.vy = 250*(Math.random()<0.5?1:-1);
     }
-  });
-
-  // DOM elems
-  const pBot = document.getElementById("paddle-bottom"),
-        pTop = document.getElementById("paddle-top"),
-        ballEl = document.getElementById("ball"),
-        score1El = document.getElementById("score1"),
-        score2El = document.getElementById("score2"),
-        historyList = document.getElementById("historyList"),
-        voteStatus  = document.getElementById("voteStatus"),
-        cdEl = document.getElementById("countdown");
-
-  // consts
-  const W=600,H=900,PL=85,PT=12,BR=15,WIN=5;
-  let scores={player1:0,player2:0}, paused=false;
-  let ball={x:W/2-BR/2,y:H/2-BR/2,vx:0,vy:0}, paddlePos=(W-PL)/2, speed=0;
-
-  // listeners
-  paddlesRef.on("value",s=>{const ps=s.val()||{};
-    if(ps[bottomRole]!=null) pBot.style.left=ps[bottomRole]+"px";
-    if(ps[topRole]!=null)    pTop.style.left=ps[topRole]+"px";
-  });
-  ballRef.on("value",s=>{const b=s.val(); if(b){
-    ballEl.style.left=b.x+"px";
-    ballEl.style.top =b.y+"px";
-  }});
-  scoreRef.on("value",s=>{const sc=s.val()||{};
-    scores=sc;
-    score1El.textContent=sc.player1||0;
-    score2El.textContent=sc.player2||0;
-    if(sc.player1===WIN||sc.player2===WIN){
-      showMsg(`${sc.player1===WIN?"P1":"P2"} wins!`);
-      historyRef.push({p1:sc.player1,p2:sc.player2,time:Date.now()});
-    }
-  });
-  pausedRef.on("value",s=>{ paused=!!s.val();
-    document.getElementById("stopBtn").textContent= paused?"Start":"Stop";
-  });
-  historyRef.limitToLast(10).on("child_added",s=>{
-    const h=s.val(),li=document.createElement("li");
-    li.textContent=`${new Date(h.time).toLocaleTimeString()} • P1 ${h.p1} – P2 ${h.p2}`;
-    historyList.prepend(li);
-  });
-  resetVoteRef.on("value",s=>{
-    const v=s.val()||{}, c=Object.keys(v).length;
-    voteStatus.textContent=`Votes: ${c}/2`;
-    if(c===2 && role==="player1") doReset();
-  });
-
-  // show on-screen message
-  function showMsg(txt){
-    const d=document.createElement("div");
-    Object.assign(d.style,{
-      position:"fixed",top:"40%",left:"50%",
-      transform:"translate(-50%,-50%)",
-      background:"rgba(255,255,255,0.2)",
-      padding:"1rem",fontSize:"0.9rem",zIndex:11
-    });
-    d.textContent=txt; document.body.append(d);
-    setTimeout(()=>d.remove(),2000);
-  }
-
-  // keyboard
-  document.addEventListener("keydown",e=>{
-    if(["a","A","ArrowLeft"].includes(e.key))  speed=-10;
-    if(["d","D","ArrowRight"].includes(e.key)) speed=10;
-    if(e.key==="r"||e.key==="R") location.reload();
-  });
-  document.addEventListener("keyup",()=> speed=0);
-
-  // local paddle update
-  function initLocalLoop(){
-    setInterval(()=>{
-      if(!paused && speed){
-        paddlePos=Math.max(0,Math.min(W-PL,paddlePos+speed));
-        paddlesRef.child(role).set(paddlePos);
-      }
-    },50);
-  }
-
-  // touchpad
-  function initTouchControl(){
-    const tp=document.getElementById("touchPad");
-    function mv(x){
-      const r=tp.getBoundingClientRect();
-      let px=x-r.left-PL/2;
-      px=Math.max(0,Math.min(W-PL,px));
-      paddlePos=px;
-      paddlesRef.child(role).set(px);
-    }
-    tp.addEventListener("touchmove",e=>{mv(e.touches[0].clientX);e.preventDefault();},{passive:false});
-    tp.addEventListener("mousemove",e=> mv(e.clientX));
-  }
-
-  // master loop
-  function initMasterLoop(){
-    scoreRef.set({player1:0,player2:0});
-    pausedRef.set(false);
-    resetVoteRef.remove();
-    spawnBall();  // countdown + initial
-    setInterval(()=>{
-      if(paused) return;
-      ball.x+=ball.vx; ball.y+=ball.vy;
-      if(ball.x<0||ball.x>W-BR) ball.vx*=-1;
-      paddlesRef.once("value",snap=>{
-        const ps=snap.val()||{};
-        // top
-        if(ball.y < PT+BR+1){
-          if(ball.x>ps.player2-1 && ball.x<ps.player2+PL+1){
-            ball.vy*=-1.1; ball.vx*=1.1;
-          } else { scorePoint("player1"); return; }
-        }
-        // bottom
-        if(ball.y > H-PT-BR-1){
-          if(ball.x>ps.player1-1 && ball.x<ps.player1+PL+1){
-            ball.vy*=-1.1; ball.vx*=1.1;
-          } else { scorePoint("player2"); return; }
-        }
-        ballRef.set(ball);
+    resetBall();
+    let last=performance.now();
+    function frame(now){
+      const dt=(now-last)/1000; last=now;
+      // paddle1 kontrol
+      if(keys['w']||keys['ArrowUp'])   paddle.player1=Math.max(0,paddle.player1-300*dt);
+      if(keys['s']||keys['ArrowDown']) paddle.player1=Math.min(arenaH-padH,paddle.player1+300*dt);
+      paddlesRef.child('player1').set(paddle.player1);
+      // paddle2’yi oku
+      paddlesRef.child('player2').once('value',s=>{
+        if(s.exists()) paddle.player2=s.val();
       });
-    },50);
-  }
-
-  function scorePoint(pl){
-    scores[pl]++;
-    scoreRef.set(scores);
-    if(scores[pl]<WIN){
-      pausedRef.set(true);
-      cdEl.textContent="3"; cdEl.style.display="block";
-      setTimeout(()=>{
-        cdEl.style.display="none";
-        spawnBallImmediate();
-        pausedRef.set(false);
-      },1000);
+      // top hareketi
+      ball.x += ball.vx*dt;
+      ball.y += ball.vy*dt;
+      // üst-alt duvar
+      if(ball.y<=ballR||ball.y>=arenaH-ballR) ball.vy*=-1;
+      // sol gol
+      if(ball.x<=padW+ballR){
+        if(ball.y< paddle.player1||ball.y>paddle.player1+padH){
+          score.p2++; resetBall();
+        } else { ball.vx=Math.abs(ball.vx); }
+      }
+      // sağ gol
+      if(ball.x>=arenaW-padW-ballR){
+        if(ball.y< paddle.player2||ball.y>paddle.player2+padH){
+          score.p1++; resetBall();
+        } else { ball.vx=-Math.abs(ball.vx); }
+      }
+      // DB’ye yaz
+      ballRef.set(ball);
+      scoreRef.set(score);
+      requestAnimationFrame(frame);
     }
+    requestAnimationFrame(frame);
   }
 
-  function spawnBall(){
-    pausedRef.set(true);
-    cdEl.textContent="3"; cdEl.style.display="block";
-    setTimeout(()=>{
-      cdEl.style.display="none";
-      spawnBallImmediate();
-      pausedRef.set(false);
-    },1000);
-  }
-  function spawnBallImmediate(){
-    ball.x=W/2-BR/2;
-    ball.y=H/2-BR/2;
-    ball.vy=(Math.random()<0.5?1:-1)*8;
-    ball.vx=(Math.random()<0.5?1:-1)*6;
-    ballRef.set(ball);
+  // bütün client’lar → render + player2 kontrol
+  paddle.player1 = paddle.player2 = (arenaH-padH)/2;
+  ball = { x:arenaW/2, y:arenaH/2, vx:0, vy:0 };
+  score= { p1:0,p2:0 };
+
+  paddlesRef.child('player1').on('value',s=>{ if(s.exists()) paddle.player1=s.val(); render(); });
+  paddlesRef.child('player2').on('value',s=>{ if(s.exists()) paddle.player2=s.val(); render(); });
+  ballRef.on('value',s=>{ if(s.exists()) ball=s.val(); render(); });
+  scoreRef.on('value',s=>{ if(s.exists()){
+    score=s.val();
+    document.getElementById('score1').textContent=score.p1;
+    document.getElementById('score2').textContent=score.p2;
+  }})
+
+  function render(){
+    document.getElementById('paddle1').style.top  = paddle.player1+'px';
+    document.getElementById('paddle2').style.top  = paddle.player2+'px';
+    document.getElementById('ball').style.left    = ball.x+'px';
+    document.getElementById('ball').style.top     = ball.y+'px';
   }
 
-  // controls
-  document.getElementById("stopBtn").onclick = ()=>{
-    pausedRef.set(!paused);
-  };
-  document.getElementById("restartVoteBtn").onclick = ()=>{
-    resetVoteRef.child(role).set(true);
-    document.getElementById("restartVoteBtn").disabled = true;
-  };
+  // klavye dinle
+  window.addEventListener('keydown',e=>keys[e.key]=true);
+  window.addEventListener('keyup',  e=>keys[e.key]=false);
 
-  function doReset(){
-    scores={player1:0,player2:0};
-    scoreRef.set(scores);
-    spawnBall();
-    pausedRef.set(false);
-    resetVoteRef.remove();
-    document.getElementById("restartVoteBtn").disabled = false;
-    showMsg("Game Restarted!");
+  // player2 fareyle kontrol
+  if(role==='player2'){
+    document.getElementById('arena').addEventListener('mousemove',e=>{
+      const r=e.target.getBoundingClientRect();
+      let y=e.clientY - r.top - padH/2;
+      y=Math.max(0,Math.min(arenaH-padH,y));
+      paddlesRef.child('player2').set(y);
+    });
   }
   </script>
 </body>

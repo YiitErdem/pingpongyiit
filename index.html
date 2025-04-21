@@ -3,48 +3,81 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ping Pong • Lobby</title>
+  <title>Ping Pong Lobby</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #111; color: #eee; margin:0; padding:1rem; }
-    h1 { text-align:center; }
-    .rooms { display:flex; justify-content:space-around; margin:2rem 0; }
+    /* Arka plan resmi */
+    body {
+      margin: 0;
+      padding: 1rem;
+      font-family: Arial, sans-serif;
+      background: url('background.PNG') no-repeat center center fixed;
+      background-size: cover;
+      color: #eee;
+    }
+    h1 {
+      text-align: center;
+      text-shadow: 0 0 5px rgba(0,0,0,0.7);
+    }
+    .rooms {
+      display: flex;
+      justify-content: space-around;
+      margin: 2rem 0;
+    }
     .room {
-      background: #222;
-      padding:1rem;
-      border:1px solid #444;
-      width:200px;
-      text-align:center;
-      border-radius:4px;
+      background: rgba(0,0,0,0.6);
+      padding: 1rem;
+      border: 1px solid #444;
+      width: 200px;
+      text-align: center;
+      border-radius: 4px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
     }
-    .room h2 { margin-top:0; }
-    .room p { margin:0.5rem 0; }
+    .room h2 {
+      margin-top: 0;
+      text-shadow: 0 0 3px rgba(0,0,0,0.7);
+    }
+    .room p {
+      margin: 0.5rem 0;
+    }
     .room button {
-      margin:0.25rem;
-      padding:0.5rem;
-      width:90%;
-      cursor:pointer;
-      background:#444;
-      border:none;
-      color:#eee;
-      border-radius:2px;
+      margin: 0.25rem 0;
+      padding: 0.5rem;
+      width: 90%;
+      cursor: pointer;
+      background: #444;
+      border: none;
+      color: #eee;
+      border-radius: 2px;
+      transition: background 0.2s;
     }
-    .room button:disabled { background:#333; color:#666; cursor:not-allowed; }
+    .room button:hover:not(:disabled) {
+      background: #666;
+    }
+    .room button:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
     #resetBtn {
-      display:block;
-      margin:2rem auto 0;
-      padding:0.5rem 1rem;
-      background:#900;
-      border:none;
-      color:#fff;
-      cursor:pointer;
-      border-radius:2px;
+      display: block;
+      margin: 2rem auto 0;
+      padding: 0.5rem 1rem;
+      background: #900;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 2px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.7);
+      transition: background 0.2s;
+    }
+    #resetBtn:hover {
+      background: #b00;
     }
   </style>
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
   <script>
-    // --- Initialize Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
@@ -56,52 +89,35 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
     const rooms = ["masa1","masa2"];
 
-    // Update UI for each room
     function updateRooms() {
       rooms.forEach(room => {
         db.ref(`rooms/${room}/paddles`).once("value", snap => {
-          const count = snap.numChildren();
-          const statusEl = document.getElementById(`${room}-status`);
-          statusEl.textContent =
-            count === 0 ? "Empty" :
-            count === 1 ? "1 Player" :
+          const cnt = snap.numChildren();
+          document.getElementById(`${room}-status`).textContent =
+            cnt===0 ? "Empty" :
+            cnt===1 ? "1 Player" :
             "Full";
-
-          // enable/disable join buttons
-          document.getElementById(`${room}-p1`).disabled = count >= 1;
-          document.getElementById(`${room}-p2`).disabled = count >= 2;
+          document.getElementById(`${room}-p1`).disabled = cnt>=1;
+          document.getElementById(`${room}-p2`).disabled = cnt>=2;
         });
       });
     }
 
     window.addEventListener("DOMContentLoaded", () => {
-      // set up join buttons
       rooms.forEach(room => {
-        document.getElementById(`${room}-p1`).onclick = () => {
-          window.location.href = `game.html?room=${room}&role=player1`;
-        };
-        document.getElementById(`${room}-p2`).onclick = () => {
-          window.location.href = `game.html?room=${room}&role=player2`;
-        };
+        document.getElementById(`${room}-p1`).onclick = () =>
+          location.href = `game.html?room=${room}&role=player1`;
+        document.getElementById(`${room}-p2`).onclick = () =>
+          location.href = `game.html?room=${room}&role=player2`;
       });
-
-      // listen for any changes under /rooms
       db.ref("rooms").on("value", updateRooms);
       updateRooms();
-
-      // reset rooms
       document.getElementById("resetBtn").onclick = () => {
         const code = prompt("Enter reset code:");
-        if (code === "1234") {
-          rooms.forEach(room => {
-            db.ref(`rooms/${room}`).remove();
-          });
-        } else {
-          alert("Wrong code!");
-        }
+        if (code==="1234") rooms.forEach(r=>db.ref(`rooms/${r}`).remove());
+        else alert("Wrong code!");
       };
     });
   </script>

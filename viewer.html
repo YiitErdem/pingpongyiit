@@ -1,0 +1,49 @@
+<!-- viewer.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ping Pong Spectator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{margin:0;overflow:hidden;background:#000}
+    #arena{position:relative;margin:auto;top:0;left:0;right:0;bottom:0;width:800px;height:500px;border:2px solid #fff}
+    canvas{display:block}
+    #score{position:absolute;top:10px;width:100%;text-align:center;color:#fff;font:20px sans-serif}
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+  <script src="firebase.js"></script>
+</head>
+<body>
+  <div id="arena">
+    <canvas id="canvas" width="800" height="500"></canvas>
+    <div id="score">0 : 0</div>
+  </div>
+  <script>
+  (()=>{
+    const params=new URLSearchParams(location.search)
+    const room=params.get('room')||'masa1'
+    const dbRef=firebase.database().ref('rooms/'+room)
+    const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d')
+    const paddleH=80,paddleW=12
+
+    dbRef.on('value',snap=>{
+      const v=snap.val()
+      // draw
+      ctx.clearRect(0,0,800,500)
+      ctx.strokeStyle='#555';ctx.setLineDash([5,5])
+      ctx.beginPath();ctx.moveTo(400,0);ctx.lineTo(400,500);ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle='#fff'
+      const p1=v.players.player1?.y||210
+      const p2=v.players.player2?.y||210
+      ctx.fillRect(0,p1,paddleW,paddleH)
+      ctx.fillRect(800-paddleW,p2,paddleW,paddleH)
+      ctx.beginPath();ctx.arc(v.ball.x,v.ball.y,7,0,2*Math.PI);ctx.fill()
+      document.getElementById('score').textContent=v.score.p1+' : '+v.score.p2
+    })
+  })()
+  </script>
+</body>
+</html>

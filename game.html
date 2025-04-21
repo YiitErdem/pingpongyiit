@@ -13,8 +13,12 @@
   <style>
     body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:'Press Start 2P',monospace; }
     header { display:flex; justify-content:space-between; padding:1rem; }
-    .arena { position:fixed; top:50%; left:50%; width:900px; height:600px;
-             margin:-300px 0 0 -450px; background:#333; border:3px dashed #fff; }
+    .arena {
+      position:fixed; top:50%; left:50%;
+      width:900px; height:600px;
+      margin:-300px 0 0 -450px;
+      background:#333; border:3px dashed #fff;
+    }
     .player-left-paddle, .player-right-paddle, .ping-pong-ball {
       position:absolute; background:#fff;
     }
@@ -23,11 +27,20 @@
     .ping-pong-ball { width:15px; height:15px; border-radius:50%; }
     .dialog {
       position:fixed; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.8); display:flex; align-items:center;
-      justify-content:center; z-index:10; color:#fff; text-align:center;
+      background:rgba(0,0,0,0.8); display:flex;
+      align-items:center; justify-content:center; z-index:10; text-align:center;
     }
     .dialog.hide { display:none; }
-    .dialog button { margin-top:1rem; padding:.5rem 1rem; }
+    .dialog button { margin-top:1rem; padding:.5rem 1rem; cursor:pointer; }
+    #controlPanel {
+      position:fixed; bottom:1rem; right:1rem;
+      background:rgba(255,255,255,0.1); padding:1rem;
+      font-size:.75rem; max-width:200px;
+    }
+    #controlPanel h3 { margin:0 0 .5rem; font-size:.8rem; }
+    #controlPanel ul { list-style:none; padding:0; margin:0 0 .5rem; max-height:100px; overflow:auto; }
+    #controlPanel button { width:100%; margin:.2rem 0; padding:.3rem; cursor:pointer; }
+    #voteStatus { margin:0; text-align:center; }
     footer { position:fixed; bottom:0; width:100%; text-align:center; font-size:.75rem; }
   </style>
 </head>
@@ -38,7 +51,7 @@
     <div>Player 2: <span id="score2">0</span></div>
   </header>
 
-  <div class="arena">
+  <div class="arena" id="arena">
     <div id="paddle1" class="player-left-paddle"></div>
     <div id="ball" class="ping-pong-ball"></div>
     <div id="paddle2" class="player-right-paddle"></div>
@@ -51,13 +64,20 @@
     </div>
   </div>
 
+  <div id="controlPanel">
+    <h3>Son Oyunlar</h3>
+    <ul id="historyList"></ul>
+    <button id="stopBtn">Stop</button>
+    <button id="restartVoteBtn">Restart Vote</button>
+    <p id="voteStatus">Votes: 0/2</p>
+  </div>
+
   <footer>
-    Controls: Player 1 = W/S &nbsp;|&nbsp; Player 2 = ↑/↓ &nbsp;|&nbsp;
-    Refresh = R
+    Controls: P1=W/S | P2=↑/↓ | Drag=Mouse/Touch | Refresh=R
   </footer>
 
   <script>
-  // ← Firebase init (same config as index.html)
+  // — Firebase init —
   const firebaseConfig = {
     apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
     authDomain: "masa-tenisi-v1.firebaseapp.com",
@@ -71,32 +91,35 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  // read URL params:
-  const params = new URLSearchParams(location.search);
-  const room = params.get("room");
-  const role = params.get("role");            // "player1" or "player2"
-  const isMaster = role === "player1";        // we'll let p1 drive the ball
+  // URL Params
+  const params   = new URLSearchParams(location.search);
+  const room     = params.get("room");
+  const role     = params.get("role");           // "player1" veya "player2"
+  const isMaster = role === "player1";
 
-  // DB refs:
-  const rootRef   = db.ref(`rooms/${room}`);
-  const playersRef= rootRef.child("players");
-  const readyRef  = rootRef.child("ready");
-  const paddlesRef= rootRef.child("paddles");
-  const ballRef   = rootRef.child("ball");
-  const scoreRef  = rootRef.child("scores");
+  // DB refs
+  const rootRef      = db.ref(`rooms/${room}`);
+  const playersRef   = rootRef.child("players");
+  const readyRef     = rootRef.child("ready");
+  const paddlesRef   = rootRef.child("paddles");
+  const ballRef      = rootRef.child("ball");
+  const scoreRef     = rootRef.child("scores");
+  const pausedRef    = rootRef.child("paused");
+  const historyRef   = rootRef.child("history");
+  const resetVoteRef = rootRef.child("resetVote");
 
-  // on unload: clean up your slot & ready flag
+  // clean up on unload
   window.addEventListener("beforeunload", () => {
     playersRef.child(role).remove();
     readyRef.child(role).remove();
     paddlesRef.child(role).remove();
+    resetVoteRef.child(role).remove();
   });
 
-  // --- DIALOG & READY FLOW ---
-  const dialog   = document.getElementById("dialog");
-  const readyBtn = document.getElementById("readyBtn");
+  // DIALOG + READY
+  const dialog     = document.getElementById("dialog");
+  const readyBtn   = document.getElementById("readyBtn");
   const dialogText = document.getElementById("dialogText");
-
   let amReady = false;
   readyBtn.onclick = () => {
     readyRef.child(role).set(true);
@@ -104,63 +127,104 @@
     readyBtn.disabled = true;
     dialogText.textContent = "Waiting for opponent…";
   };
-
-  // once both ready → start
   readyRef.on("value", snap => {
-    const r = snap.val() || {};
-    const count = Object.keys(r).length;
-    if (!amReady) {
-      dialogText.textContent = `Ready: ${count}/2`;
-    }
+    const r = snap.val()||{};
+    const cnt = Object.keys(r).length;
+    if (!amReady) dialogText.textContent = `Ready: ${cnt}/2`;
     if (r.player1 && r.player2) {
       dialog.classList.add("hide");
       if (isMaster) initMasterLoop();
       initLocalLoop();
+      initPointerControl();
     }
   });
 
-  // --- GAME STATE & DOM ---
-  const arenaW = 900, arenaH = 600;
-  const pw = 12, ph = 85, br = 15;
+  // Oyun alanı & sabitler
+  const arenaEl = document.getElementById("arena");
+  const arenaW = 900, arenaH = 600, pw=12, ph=85, br=15;
   const winScore = 5;
-
-  let paddleY = (arenaH/2 - ph/2);
-  let speed  = 0;
-  let ball = { x: arenaW/2 - br/2, y: arenaH/2 - br/2, vx:0, vy:0 };
+  let paddleY = (arenaH/2 - ph/2), speed = 0;
+  let ball = { x:arenaW/2-br/2, y:arenaH/2-br/2, vx:0, vy:0 };
   let scores = { player1:0, player2:0 };
+  let paused = false;
 
-  // grab elements
-  const p1El  = document.getElementById("paddle1");
-  const p2El  = document.getElementById("paddle2");
-  const ballEl= document.getElementById("ball");
-  const s1El  = document.getElementById("score1");
-  const s2El  = document.getElementById("score2");
+  // DOM Elemanları
+  const p1El   = document.getElementById("paddle1");
+  const p2El   = document.getElementById("paddle2");
+  const ballEl = document.getElementById("ball");
+  const s1El   = document.getElementById("score1");
+  const s2El   = document.getElementById("score2");
 
-  // listen for remote paddles + ball + scores
+  // ================ DB Dinleyiciler ================
+  // paddle pozisyonları
   paddlesRef.on("value", snap => {
-    const ps = snap.val() || {};
-    if (ps.player1 != null) p1El.style.top = ps.player1 + "px";
-    if (ps.player2 != null) p2El.style.top = ps.player2 + "px";
+    const ps = snap.val()||{};
+    if (ps.player1!=null) p1El.style.top = ps.player1+"px";
+    if (ps.player2!=null) p2El.style.top = ps.player2+"px";
   });
+  // top pozisyonu
   ballRef.on("value", snap => {
     const b = snap.val();
     if (b) {
-      ballEl.style.left = b.x + "px";
-      ballEl.style.top  = b.y + "px";
+      ballEl.style.left = b.x+"px";
+      ballEl.style.top  = b.y+"px";
     }
   });
+  // skorlar
   scoreRef.on("value", snap => {
-    const sc = snap.val() || {};
+    const sc = snap.val()||{};
     scores = sc;
-    s1El.textContent = sc.player1 || 0;
-    s2El.textContent = sc.player2 || 0;
-    if (sc.player1 === winScore || sc.player2 === winScore) {
-      alert((sc.player1===winScore?"Player 1":"Player 2")+" wins!");
-      location.reload();
+    s1El.textContent = sc.player1||0;
+    s2El.textContent = sc.player2||0;
+    if (sc.player1===winScore||sc.player2===winScore) {
+      // in-game notification
+      const who = sc.player1===winScore?"Player 1":"Player 2";
+      showInGameMessage(`${who} wins!`);
+      // kaydet history'e
+      historyRef.push({ p1:sc.player1, p2:sc.player2, time:Date.now() });
+    }
+  });
+  // paused state
+  pausedRef.on("value", snap => {
+    paused = !!snap.val();
+    document.getElementById("stopBtn").textContent = paused?"Start":"Stop";
+  });
+  // history list
+  const historyList = document.getElementById("historyList");
+  historyRef.limitToLast(10).on("child_added", snap => {
+    const h = snap.val();
+    const li = document.createElement("li");
+    const t = new Date(h.time).toLocaleTimeString();
+    li.textContent = `${t} • P1 ${h.p1} – P2 ${h.p2}`;
+    historyList.prepend(li);
+  });
+  // reset votes
+  const voteStatus = document.getElementById("voteStatus");
+  resetVoteRef.on("value", snap => {
+    const v = snap.val()||{};
+    const cnt = Object.keys(v).length;
+    voteStatus.textContent = `Votes: ${cnt}/2`;
+    if (isMaster && cnt===2) {
+      doResetGame();
     }
   });
 
-  // keyboard
+  // ================ İn-game mesaj ================
+  function showInGameMessage(txt) {
+    const div = document.createElement("div");
+    Object.assign(div.style,{
+      position:"fixed", top:"40%", left:"50%",
+      transform:"translate(-50%,-50%)",
+      background:"rgba(255,255,255,0.2)",
+      padding:"1rem", "font-size":".9rem"
+    });
+    div.textContent = txt;
+    document.body.append(div);
+    setTimeout(()=>div.remove(), 2000);
+  }
+
+  // ================ Kontroller ================
+  // klavye
   document.addEventListener("keydown", e => {
     if (role==="player1") {
       if (e.key==="w") speed = -10;
@@ -172,69 +236,105 @@
     }
     if (e.key==="r") location.reload();
   });
-  document.addEventListener("keyup", e => { speed = 0; });
+  document.addEventListener("keyup", ()=> speed=0);
 
-  // local paddle loop
+  // mouse / touch
+  function initPointerControl(){
+    function pointerMove(clientY){
+      const r = arenaEl.getBoundingClientRect();
+      let y = clientY - r.top - ph/2;
+      y = Math.max(0,Math.min(arenaH-ph,y));
+      paddleY = y;
+      paddlesRef.child(role).set(paddleY);
+    }
+    arenaEl.addEventListener("mousemove", e=>pointerMove(e.clientY));
+    arenaEl.addEventListener("touchmove", e=>{
+      pointerMove(e.touches[0].clientY);
+      e.preventDefault();
+    },{passive:false});
+  }
+
+  // local loop (her oyuncu için paddle hareketi)
   function initLocalLoop(){
     setInterval(()=>{
       if (speed!==0){
         paddleY += speed;
-        paddleY = Math.max(0, Math.min(arenaH-ph, paddleY));
+        paddleY = Math.max(0,Math.min(arenaH-ph,paddleY));
         paddlesRef.child(role).set(paddleY);
       }
-    }, 50);
+    },50);
   }
 
-  // only player1 drives the ball physics
+  // master loop (player1 fizik + skor)
   function initMasterLoop(){
-    // init scores in DB once
-    scoreRef.set({player1:0, player2:0});
+    scoreRef.set({player1:0,player2:0});
+    pausedRef.set(false);
     spawnBall();
-
-    setInterval(() => {
-      // move
-      ball.x += ball.vx;
-      ball.y += ball.vy;
-      // wall bounce
-      if (ball.y<0 || ball.y>arenaH-br) ball.vy *= -1;
-      // paddles
-      paddlesRef.once("value", snap => {
-        const ps = snap.val()||{};
-        // left
-        if (ball.x < pw+br) {
-          if (ball.y > (ps.player1||-999) && ball.y < (ps.player1||0)+ph) {
-            ball.vx *= -1;
+    setInterval(()=>{
+      if (paused) return;
+      ball.x += ball.vx; ball.y += ball.vy;
+      // duvar
+      if (ball.y<0 || ball.y>arenaH-br) ball.vy*=-1;
+      // paddle çarpışmaları
+      paddlesRef.once("value",snap=>{
+        const ps=snap.val()||{};
+        // sol
+        if (ball.x<pw+br){
+          if (ball.y>ps.player1 && ball.y<ps.player1+ph){
+            ball.vx*=-1; ball.vx*=1.1; ball.vy*=1.1;
           } else {
-            scores.player2++;
-            scoreRef.set(scores);
-            if (scores.player2<winScore) spawnBall(); return;
+            scores.player2++; scoreRef.set(scores);
+            if (scores.player2<winScore) spawnBall();
+            return;
           }
         }
-        // right
-        if (ball.x > arenaW-pw-br) {
-          if (ball.y > (ps.player2||-999) && ball.y < (ps.player2||0)+ph) {
-            ball.vx *= -1;
+        // sağ
+        if (ball.x>arenaW-pw-br){
+          if (ball.y>ps.player2 && ball.y<ps.player2+ph){
+            ball.vx*=-1; ball.vx*=1.1; ball.vy*=1.1;
           } else {
-            scores.player1++;
-            scoreRef.set(scores);
-            if (scores.player1<winScore) spawnBall(); return;
+            scores.player1++; scoreRef.set(scores);
+            if (scores.player1<winScore) spawnBall();
+            return;
           }
         }
-
-        // push update
-        ballRef.set({ x:ball.x, y:ball.y, vx:ball.vx, vy:ball.vy });
+        // yaz DB
+        ballRef.set(ball);
       });
-    }, 50);
+    },50);
   }
 
+  // top reset
   function spawnBall(){
     ball.x = arenaW/2 - br/2;
     ball.y = arenaH/2 - br/2;
-    // random dir
     const dir = Math.random()<0.5?1:-1;
     ball.vx = dir*8; ball.vy = 6*(Math.random()<0.5?1:-1);
-    ballRef.set({ x:ball.x, y:ball.y, vx:ball.vx, vy:ball.vy });
+    ballRef.set(ball);
   }
+
+  // ================ Stop/Start Düğmesi ================
+  document.getElementById("stopBtn").onclick = ()=>{
+    pausedRef.set(!paused);
+  };
+
+  // ================ Restart Vote ================
+  const rvBtn = document.getElementById("restartVoteBtn");
+  rvBtn.onclick = ()=>{
+    resetVoteRef.child(role).set(true);
+    rvBtn.disabled = true;
+  };
+  function doResetGame(){
+    // master yapıyor
+    scores = {player1:0,player2:0};
+    scoreRef.set(scores);
+    spawnBall();
+    pausedRef.set(false);
+    resetVoteRef.remove();
+    rvBtn.disabled = false;
+    showInGameMessage("Game Restarted!");
+  }
+
   </script>
 </body>
 </html>

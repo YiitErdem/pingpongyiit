@@ -1,107 +1,51 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Ping Pong Viewer</title>
-  <style>
-    body { margin:0; padding:0; background:#000; overflow:hidden; }
-    #c { display:block; margin:auto; background:#111; }
-    #chat {
-      position:fixed; bottom:0; right:0;
-      width:300px; height:40%;
-      background:rgba(0,0,0,0.6);
-      display:flex; flex-direction:column;
-    }
-    #messages { flex:1; overflow-y:auto; padding:0.5rem; color:#fff; font-size:0.85rem; }
-    #chatForm { display:flex; }
-    #chatInput { flex:1; border:none; padding:0.5rem; }
-    #sendBtn { width:60px; border:none; background:#17a2b8; color:#fff; cursor:pointer; }
-    #statsOverlay {
-      position:fixed; top:10px; left:10px;
-      color:#fff; background:rgba(0,0,0,0.5);
-      padding:5px 10px; border-radius:5px; font-size:0.9rem;
-    }
-  </style>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>PingPong Viewer</title>
+  <style>canvas{display:block;margin:auto;background:#111}</style>
 </head>
 <body>
+  <canvas id="c" width="900" height="600"></canvas>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+  <script>
+    // Firebase init (aynı config)
+    const app = firebase.initializeApp( /* config */ );
+    const db  = firebase.database(app);
+    const stateRef = db.ref('game/state');
 
-<canvas id="c" width="900" height="600"></canvas>
-<div id="statsOverlay">Rally: 0</div>
-<div id="chat">
-  <div id="messages"></div>
-  <form id="chatForm">
-    <input id="chatInput" autocomplete="off" placeholder="Mesaj..." />
-    <button type="submit" id="sendBtn">Gönder</button>
-  </form>
-</div>
+    const c = document.getElementById('c');
+    const ctx = c.getContext('2d');
+    const W=c.width, H=c.height;
 
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
-<script>
-  // --- Parametreler ---
-  const params = new URLSearchParams(location.search);
-  const room   = params.get('room') || 'masa1';
-  const user   = decodeURIComponent(params.get('user')||prompt('İsminiz?'));
-  // --- Firebase ---
-  const firebaseConfig = {
-    apiKey: "...", authDomain: "...",
-    databaseURL: "...",
-    projectId: "...", storageBucket:"...",
-    messagingSenderId:"...", appId:"..."
-  };
-  const app = firebase.initializeApp(firebaseConfig);
-  const db  = firebase.database(app);
-  const stateRef= db.ref(`state/${room}`);
-  const chatRef = db.ref(`chat/${room}`);
+    let state={ leftY:0, rightY:0, ballX:W/2, ballY:H/2, scoreL:0, scoreR:0 };
+    // Dinleyici
+    stateRef.on('value', snap=>{
+      const v = snap.val();
+      if(!v) return;
+      state = v;
+    });
 
-  // --- Canvas Hazırla ---
-  const c = document.getElementById('c');
-  const ctx = c.getContext('2d');
-  const W=c.width, H=c.height;
-
-  let state = {p1Y:0,p2Y:0,ballX:W/2,ballY:H/2,rally:0};
-
-  stateRef.on('value',snap=>{
-    const v=snap.val();
-    if(v) state=v;
-  });
-
-  // --- Chat ---
-  document.getElementById('chatForm').addEventListener('submit',e=>{
-    e.preventDefault();
-    const txt = document.getElementById('chatInput').value.trim();
-    if(!txt) return;
-    chatRef.push({user,text:txt,time:Date.now()});
-    document.getElementById('chatInput').value='';
-  });
-  chatRef.on('child_added',snap=>{
-    const m=snap.val(), d=new Date(m.time).toLocaleTimeString();
-    const el = document.createElement('div');
-    el.textContent=`[${d}] ${m.user}: ${m.text}`;
-    document.getElementById('messages').append(el);
-    document.getElementById('messages').scrollTop=1e9;
-  });
-
-  // --- Çizim Döngüsü ---
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    // orta çizgi
-    ctx.strokeStyle='#555'; ctx.setLineDash([10,10]);
-    ctx.beginPath();ctx.moveTo(W/2,0);ctx.lineTo(W/2,H);ctx.stroke();
-    ctx.setLineDash([]);
-    // paddles
-    ctx.fillStyle='#fff';
-    ctx.fillRect(0, state.p1Y, 12, 85);
-    ctx.fillRect(W-12, state.p2Y, 12, 85);
-    // ball
-    ctx.beginPath();
-    ctx.arc(state.ballX, state.ballY, 7.5, 0, 2*Math.PI);
-    ctx.fill();
-    // stats
-    document.getElementById('statsOverlay').textContent = `Rally: ${state.rally}`;
-    requestAnimationFrame(draw);
-  }
-  draw();
-</script>
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      // orta çizgi
+      ctx.strokeStyle='#555'; ctx.setLineDash([10,10]);
+      ctx.beginPath();ctx.moveTo(W/2,0);ctx.lineTo(W/2,H);ctx.stroke();
+      ctx.setLineDash([]);
+      // paddles
+      ctx.fillStyle='#fff';
+      ctx.fillRect(0, state.leftY,12,85);
+      ctx.fillRect(W-12, state.rightY,12,85);
+      // top
+      ctx.beginPath();
+      ctx.arc(state.ballX, state.ballY,10,0,2*Math.PI);
+      ctx.fill();
+      // skor
+      ctx.fillText(`${state.scoreL} – ${state.scoreR}`,W/2-20,30);
+      requestAnimationFrame(draw);
+    }
+    draw();
+  </script>
 </body>
 </html>

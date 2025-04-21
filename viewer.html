@@ -2,88 +2,94 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ping Pong Viewer</title>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
-    rel="stylesheet"
-  />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ping Pong Spectator</title>
+  <style> /* game.html ile aynı stil */ 
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
+    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
+      header div{font-size:1.2rem;}
+      .heading{font-size:1.5rem;}
+    .arena {
+      position:relative;
+      width:900px; height:600px;
+      margin:2rem auto;
+      background:#222; border:3px dashed #0ff;
+      overflow:hidden;
+    }
+    .player-left-paddle, .player-right-paddle, .ping-pong-ball{
+      position:absolute;
+      border-radius:4px;
+    }
+    .player-left-paddle {
+      width:12px; height:85px;
+      left:0; background:#0ff;
+    }
+    .player-right-paddle {
+      width:12px; height:85px;
+      right:0; background:#f0f;
+    }
+    .ping-pong-ball {
+      width:15px; height:15px;
+      background:#ff0;
+      box-shadow:0 0 8px #ff0;
+      margin:-7.5px;
+    }
+  </style>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
-  <style>
-    body { margin:0; overflow:hidden; background:#000; color:#fff; font-family:'Press Start 2P',monospace; }
-    header { display:flex; justify-content:space-between; padding:1rem; }
-    .arena { position:fixed; top:50%; left:50%; width:900px; height:600px;
-             margin:-300px 0 0 -450px; background:#333; border:3px dashed #fff; }
-    .player-left-paddle, .player-right-paddle, .ping-pong-ball {
-      position:absolute; background:#fff;
-    }
-    .player-left-paddle { width:12px; height:85px; left:0; }
-    .player-right-paddle { width:12px; height:85px; right:0; }
-    .ping-pong-ball { width:15px; height:15px; border-radius:50%; }
-    footer { position:fixed; bottom:0; width:100%; text-align:center; font-size:.75rem; }
-  </style>
 </head>
 <body>
   <header>
-    <div>Player 1: <span id="score1">0</span></div>
-    <h1>Viewer Mode</h1>
-    <div>Player 2: <span id="score2">0</span></div>
+    <div>Player 1: <span id="score1">0</span></div>
+    <div class="heading">Spectator View</div>
+    <div>Player 2: <span id="score2">0</span></div>
   </header>
-
-  <div class="arena">
+  <div class="arena" id="arena">
     <div id="paddle1" class="player-left-paddle"></div>
-    <div id="ball" class="ping-pong-ball"></div>
+    <div id="ball"    class="ping-pong-ball"></div>
     <div id="paddle2" class="player-right-paddle"></div>
   </div>
 
-  <footer>({{ room }})</footer>
-
   <script>
-  // ← Firebase init
-  const firebaseConfig = {
-    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-    authDomain: "masa-tenisi-v1.firebaseapp.com",
-    databaseURL:
-      "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "masa-tenisi-v1",
-    storageBucket: "masa-tenisi-v1.appspot.com",
-    messagingSenderId: "186015084983",
-    appId: "1:186015084983:web:86f9d88e907423f5e33832",
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    const ps = new URLSearchParams(location.search);
+    const room = ps.get('room');
 
-  // parse room
-  const room = new URLSearchParams(location.search).get("room");
-  const rootRef  = db.ref(`rooms/${room}`);
-  const paddlesRef = rootRef.child("paddles");
-  const ballRef = rootRef.child("ball");
-  const scoreRef = rootRef.child("scores");
-  document.querySelector("footer").textContent = room;
+    // Firebase init (aynı config)
+    const firebaseConfig = {
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const paddlesRef = db.ref(`rooms/${room}/paddles`);
+    const ballRef    = db.ref(`rooms/${room}/ball`);
+    const scoreRef   = db.ref(`rooms/${room}/score`);
 
-  // grab els
-  const p1 = document.getElementById("paddle1");
-  const p2 = document.getElementById("paddle2");
-  const b  = document.getElementById("ball");
-  const s1 = document.getElementById("score1");
-  const s2 = document.getElementById("score2");
+    const arenaH=600, padH=85;
+    let paddle={player1:(arenaH-padH)/2,player2:(arenaH-padH)/2};
+    let ball={x:450,y:300}, score={p1:0,p2:0};
 
-  // subscribe
-  paddlesRef.on("value", snap => {
-    const ps = snap.val()||{};
-    if (ps.player1 != null) p1.style.top = ps.player1+"px";
-    if (ps.player2 != null) p2.style.top = ps.player2+"px";
-  });
-  ballRef.on("value", snap => {
-    const d = snap.val();
-    if (d) { b.style.left = d.x+"px"; b.style.top = d.y+"px"; }
-  });
-  scoreRef.on("value", snap => {
-    const sc = snap.val()||{};
-    s1.textContent = sc.player1||0;
-    s2.textContent = sc.player2||0;
-  });
+    paddlesRef.child('player1').on('value',s=>{ if(s.exists()) paddle.player1=s.val(); render(); });
+    paddlesRef.child('player2').on('value',s=>{ if(s.exists()) paddle.player2=s.val(); render(); });
+    ballRef.on('value',       s=>{ if(s.exists()) ball=s.val(); render(); });
+    scoreRef.on('value',      s=>{ if(s.exists()){
+      score=s.val();
+      document.getElementById('score1').textContent=score.p1;
+      document.getElementById('score2').textContent=score.p2;
+    }});
+
+    function render(){
+      document.getElementById('paddle1').style.top  = paddle.player1+'px';
+      document.getElementById('paddle2').style.top  = paddle.player2+'px';
+      document.getElementById('ball').style.left    = ball.x+'px';
+      document.getElementById('ball').style.top     = ball.y+'px';
+    }
   </script>
 </body>
 </html>

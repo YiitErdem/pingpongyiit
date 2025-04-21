@@ -1,0 +1,143 @@
+<!-- game.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ping Pong Game</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { margin:0; overflow:hidden; background:#000; }
+    #arena { position:relative; margin:auto; top:0; left:0; right:0; bottom:0;
+      width:800px; height:500px; border:2px solid #fff;
+    }
+    .paddle, #ball { position:absolute; background:#fff; }
+    .paddle { width:12px; height:80px; }
+    #ball { width:15px; height:15px; border-radius:50%; }
+    #score { position:absolute; top:10px; width:100%; text-align:center; color:#fff; font:20px sans-serif; }
+    #ready { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      color:#fff; font:18px sans-serif; background:rgba(0,0,0,0.7); padding:1em; display:none;
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+  <script src="firebase.js"></script>
+</head>
+<body>
+  <div id="arena">
+    <canvas id="canvas" width="800" height="500"></canvas>
+    <div id="score">0 : 0</div>
+    <button id="ready">Waiting for both players...</button>
+  </div>
+  <script>
+  (async()=>{
+    // parse params
+    const params=new URLSearchParams(location.search)
+    const room=params.get('room')||'masa1'
+    const role=params.get('role')||'viewer'
+
+    const dbRef = firebase.database().ref('rooms/'+room)
+    // if first time: set up
+    await dbRef.child('init').once('value',snap=>{
+      if(!snap.exists()) {
+        dbRef.set({
+          init:true,
+          createdAt:Date.now(),
+          ready:{player1:false,player2:false},
+          players:{},
+          ball:{ x:392,y:242,vx:4,vy:2 },
+          score:{p1:0,p2:0}
+        })
+      }
+    })
+
+    // register self
+    if(role==='player1'||role==='player2') {
+      dbRef.child('players/'+role).set({ joined:Date.now() })
+    }
+
+    const canvas=document.getElementById('canvas')
+    const ctx=canvas.getContext('2d')
+    const paddleW=12,paddleH=80
+    let myPaddleY=210
+
+    // UI ready button
+    const readyBtn=document.getElementById('ready')
+    readyBtn.style.display='block'
+    readyBtn.onclick=()=> {
+      dbRef.child('ready/'+role).set(true)
+    }
+
+    // wait both ready
+    dbRef.child('ready').on('value',snap=>{
+      const r=snap.val()
+      if(r.player1 && r.player2) {
+        readyBtn.style.display='none'
+        startLoop()
+      }
+    })
+
+    function draw(state){
+      ctx.clearRect(0,0,800,500)
+      // center line
+      ctx.strokeStyle='#555';ctx.setLineDash([5,5])
+      ctx.beginPath();ctx.moveTo(400,0);ctx.lineTo(400,500);ctx.stroke()
+      ctx.setLineDash([])
+      // paddles
+      ctx.fillStyle='#fff'
+      ctx.fillRect(0,state.p1Y,paddleW,paddleH)
+      ctx.fillRect(800-paddleW,state.p2Y,paddleW,paddleH)
+      // ball
+      ctx.beginPath();ctx.arc(state.ball.x,state.ball.y,7,0,2*Math.PI);ctx.fill()
+      // score
+      document.getElementById('score').textContent=state.score.p1+' : '+state.score.p2
+    }
+
+    // listen full state
+    dbRef.on('value',snap=>{
+      const val=snap.val()
+      const state={
+        p1Y:(val.players.player1?.y||210),
+        p2Y:(val.players.player2?.y||210),
+        ball:val.ball,
+        score:val.score
+      }
+      draw(state)
+    })
+
+    function startLoop(){
+      if(role==='player1'||role==='player2'){
+        // mouse move => update own paddle Y
+        canvas.onmousemove=e=>{
+          let rect=canvas.getBoundingClientRect()
+          myPaddleY = Math.max(0,Math.min(500-paddleH,e.clientY-rect.top-paddleH/2))
+          dbRef.child('players/'+role+'/y').set(myPaddleY)
+        }
+      }
+      // only player1 does physics
+      if(role==='player1'){
+        setInterval(async()=>{
+          const snap = await dbRef.child('ball').get()
+          let b=snap.val()
+          // move
+          b.x+=b.vx; b.y+=b.vy
+          // bounce
+          if(b.y<0||b.y>500) b.vy*=-1
+          // check paddles
+          const p1=(await dbRef.child('players/player1/y').get()).val()||210
+          const p2=(await dbRef.child('players/player2/y').get()).val()||210
+          // left paddle
+          if(b.x<12 && b.y>p1 && b.y<p1+paddleH) b.vx*=-1
+          // right paddle
+          if(b.x>800-12 && b.y>p2 && b.y<p2+paddleH) b.vx*=-1
+          // score
+          if(b.x<0){ await dbRef.child('score/p2').transaction(c=>c+1); b.x=392; }
+          if(b.x>800){ await dbRef.child('score/p1').transaction(c=>c+1); b.x=392; }
+          // write back
+          dbRef.child('ball').set(b)
+        },16)
+      }
+    }
+  })()
+  </script>
+</body>
+</html>

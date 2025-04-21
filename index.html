@@ -1,59 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Ping Pong Lobby</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+
   <!-- Bootstrap for quick styling -->
   <link
     href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.2.0/css/bootstrap.min.css"
     rel="stylesheet"
-  >
+  />
+
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
-  <!-- Your firebase config + init -->
-  <script src="firebase.js"></script>
+
   <style>
-    body {
-      background: #222;
-      color: #fff;
-      padding: 2rem;
-    }
-    .room {
-      margin-bottom: 2rem;
-    }
-    .room .card {
-      background: #333;
-    }
-    .btn-room {
-      margin-right: 0.5rem;
-      margin-top: 1rem;
-    }
+    body { background: #222; color: #fff; padding: 2rem; }
+    .room { margin-bottom: 2rem; }
+    .card { background: #333; }
+    .btn-room { margin-right: 0.5rem; margin-top: 0.5rem; }
   </style>
 </head>
 <body>
   <h1 class="mb-4">Ping Pong Lobby</h1>
-
-  <div id="rooms" class="row gy-4">
-    <!-- Room cards will be injected here -->
-  </div>
+  <div id="rooms" class="row gy-4"></div>
 
   <script>
-    // ********** CONFIGURE YOUR ROOMS HERE **********
-    const roomList = ['masa1','masa2'];
-
-    // Initialize Firebase Realtime Database reference
+    // — your Firebase config —
+    const firebaseConfig = {
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      databaseURL:
+        "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832",
+    };
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const container = document.getElementById('rooms');
 
-    roomList.forEach(room => {
-      // Build card HTML
-      const col = document.createElement('div');
-      col.className = 'col-md-6 room';
+    // fixed rooms
+    const rooms = ["masa1", "masa2"];
+    const container = document.getElementById("rooms");
+
+    rooms.forEach((room) => {
+      // build card
+      const col = document.createElement("div");
+      col.className = "col-md-6 room";
       col.innerHTML = `
         <div class="card p-3">
-          <h3>Table ${room.replace('masa','')}</h3>
+          <h3>Table ${room.replace("masa", "")}</h3>
           <p>Player 1: <span id="${room}-p1">––</span></p>
           <p>Player 2: <span id="${room}-p2">––</span></p>
           <div>
@@ -67,46 +65,37 @@
               Join as Viewer
             </button>
           </div>
-        </div>
-      `;
+        </div>`;
       container.appendChild(col);
 
-      // Grab elements
+      // references
       const p1Label = document.getElementById(`${room}-p1`);
       const p2Label = document.getElementById(`${room}-p2`);
-      const btnP1   = document.getElementById(`${room}-btn-p1`);
-      const btnP2   = document.getElementById(`${room}-btn-p2`);
-      const btnVW   = document.getElementById(`${room}-btn-vw`);
-      const roomRef = db.ref(`rooms/${room}/players`);
+      const btnP1 = document.getElementById(`${room}-btn-p1`);
+      const btnP2 = document.getElementById(`${room}-btn-p2`);
+      const btnVW = document.getElementById(`${room}-btn-vw`);
+      const playersRef = db.ref(`rooms/${room}/players`);
 
-      // Listen for slot changes
-      roomRef.on('value', snap => {
-        const players = snap.val() || {};
-        p1Label.textContent = players.player1 ? '✔ joined' : '––';
-        p2Label.textContent = players.player2 ? '✔ joined' : '––';
-        btnP1.disabled = !!players.player1;
-        btnP2.disabled = !!players.player2;
+      // realtime slot updates
+      playersRef.on("value", (snap) => {
+        const pl = snap.val() || {};
+        p1Label.textContent = pl.player1 ? "✔ joined" : "––";
+        p2Label.textContent = pl.player2 ? "✔ joined" : "––";
+        btnP1.disabled = !!pl.player1;
+        btnP2.disabled = !!pl.player2;
       });
 
-      // Join as Player 1
-      btnP1.onclick = () => {
-        roomRef.child('player1').set({ joined: Date.now() })
-          .then(() =>
-            window.location.href = `game.html?room=${room}&role=player1`
-          );
-      };
-
-      // Join as Player 2
-      btnP2.onclick = () => {
-        roomRef.child('player2').set({ joined: Date.now() })
-          .then(() =>
-            window.location.href = `game.html?room=${room}&role=player2`
-          );
-      };
-
-      // Join as Viewer
+      // join handlers
+      btnP1.onclick = () =>
+        playersRef.child("player1").set(true).then(() => {
+          window.location = `game.html?room=${room}&role=player1`;
+        });
+      btnP2.onclick = () =>
+        playersRef.child("player2").set(true).then(() => {
+          window.location = `game.html?room=${room}&role=player2`;
+        });
       btnVW.onclick = () => {
-        window.location.href = `viewer.html?room=${room}`;
+        window.location = `viewer.html?room=${room}`;
       };
     });
   </script>

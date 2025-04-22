@@ -2,55 +2,103 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong Başlangıç</title>
-  <style>
-    * { box-sizing:border-box; margin:0; padding:0; }
-    body, html {
-      width:100%; height:100%;
-      display:flex; align-items:center; justify-content:center;
-      background:#111; color:#fff; font-family:Arial,sans-serif;
-    }
-    #container {
-      background:rgba(255,255,255,0.05);
-      padding:2rem; border-radius:8px;
-      text-align:center;
-    }
-    input {
-      width:200px; padding:0.5rem; margin-top:1rem;
-      border:none; border-radius:4px;
-      font-size:1rem;
-    }
-    button {
-      margin-top:1.5rem;
-      padding:0.5rem 1rem;
-      font-size:1rem;
-      border:none; border-radius:4px;
-      background:#0ff; color:#000;
-      cursor:pointer;
-    }
-    button:disabled { background:#555; color:#222; cursor:not-allowed; }
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ping Pong Lobby</title>
+  <link rel="stylesheet" href="styles/lobby.css">
 </head>
 <body>
-  <div id="container">
-    <h1>Ping Pong</h1>
-    <p>Kullanıcı adınızı girin ve Başla’ya tıklayın.</p>
-    <input type="text" id="username" placeholder="Adınız…" />
-    <br />
-    <button id="startBtn" disabled>Başla</button>
+
+  <!-- Theme Toggle & Sound Controls -->
+  <div id="toolbar">
+    <select id="themeSelect">
+      <option value="dark">Dark</option>
+      <option value="neon">Neon</option>
+      <option value="retro">Retro</option>
+    </select>
+    <button id="muteSfx">SFX On/Off</button>
+    <button id="muteMusic">Music On/Off</button>
+    <button id="refreshLobby">⟳ Refresh</button>
   </div>
 
-  <script>
-    const inp = document.getElementById('username');
-    const btn = document.getElementById('startBtn');
-    inp.addEventListener('input', ()=> {
-      btn.disabled = inp.value.trim()==='';
+  <!-- Background image -->
+  <div id="bg"></div>
+
+  <header>
+    <h1>Ping Pong Arena</h1>
+  </header>
+
+  <!-- Leaderboard -->
+  <section id="leaderboard">
+    <h2>Leaderboard</h2>
+    <ul id="leaders"></ul>
+  </section>
+
+  <!-- “How to play” overlay -->
+  <div id="tutorial" class="overlay">
+    <div class="box">
+      <h2>Nasıl Oynanır?</h2>
+      <p>Mouse (PC) veya Touch‑pad (Mobil) ile raketinizi sürükleyin.<br>
+         Ready deyin, 3–2–1 sonrası oyuna atılırsınız.</p>
+      <button id="closeTutorial">Anladım</button>
+    </div>
+  </div>
+
+  <button id="startBtn">Oyuna Başla</button>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+  <script type="module">
+  // --- Imports & Modules
+  import { initFirebase, fetchLeaderboard, onLobbyError } from './modules/firebase.js';
+  import { showToast, vibration }              from './modules/ui.js';
+  import { playMusic, toggleSfx, toggleMusic } from './modules/audio.js';
+
+  // --- Init
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Firebase
+    try {
+      const db = initFirebase({
+        apiKey: "...", authDomain: "...",
+        databaseURL: "...default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "masa-tenisi-v1"
+      });
+      // Leaderboard
+      const leaders = await fetchLeaderboard(db);
+      const ul = document.getElementById('leaders');
+      leaders.forEach(u => {
+        const li = document.createElement('li');
+        li.textContent = `${u.name}: ${u.score}`;
+        ul.append(li);
+      });
+    } catch (e) {
+      onLobbyError(e);
+    }
+
+    // UI Controls
+    document.body.classList.add('theme-dark');
+    document.getElementById('themeSelect').addEventListener('change', e=>{
+      document.body.className = 'theme-'+e.target.value;
     });
-    btn.addEventListener('click', ()=>{
-      const name = encodeURIComponent(inp.value.trim());
-      location.href = `game.html?name=${name}`;
-    });
+    document.getElementById('muteSfx').onclick   = () => toggleSfx();
+    document.getElementById('muteMusic').onclick = () => toggleMusic();
+    document.getElementById('refreshLobby').onclick = () => location.reload();
+
+    // Tutorial
+    document.getElementById('tutorial').classList.add('visible');
+    document.getElementById('closeTutorial').onclick = () =>
+      document.getElementById('tutorial').classList.remove('visible');
+
+    // Start
+    document.getElementById('startBtn').onclick = () => {
+      vibration(50);
+      playMusic('lobby', true);
+      // delay for UX
+      setTimeout(()=> location.href = 'game.html', 300);
+    };
+  });
   </script>
+
 </body>
 </html>

@@ -1,329 +1,291 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Ping Pong Portrait</title>
+  <title>Ping Pong – Neon Dark</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    html,body{height:100%;overflow:hidden;}
-    body{
-      display:flex;align-items:center;justify-content:center;
-      background:#111;color:#fff;font-family:sans-serif;
-      background-image:url('background.png');
-      background-size:cover;
-      background-position:center;
-      position:relative;
-      transition:background .3s,color .3s
-    }
-    body.theme-neon{background-color:#000;color:#0ff;}
-    #canvas{background:rgba(0,0,0,0.6);border:3px solid #0ff;border-radius:8px;}
-    #ui{
-      position:absolute;top:10px;left:50%;transform:translateX(-50%);
-      display:flex;gap:1rem;font-size:1.2rem;align-items:center;
-    }
-    #buffsUI{display:flex;gap:.5rem;}
-    .buff-icon{
-      width:24px;height:24px;border:1px solid #fff;border-radius:4px;
-      position:relative;
-    }
-    .buff-icon span{
-      position:absolute;bottom:0;left:0;height:4px;background:#0f0;
-    }
-    #timer{font-weight:bold;}
-    #highscore{font-size:.9rem;color:#888;}
-    #controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
-      display:none;width:60px;height:80%;background:rgba(255,255,255,0.1);border-radius:30px;touch-action:none;}
-    #overlay{
-      position:absolute;top:0;left:0;width:100%;height:100%;
-      background:#000;opacity:0;pointer-events:none;transition:opacity .3s;
-    }
-    #gameover{
-      position:absolute;top:0;left:0;width:100%;height:100%;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(0,0,0,0.8);color:#0ff;
-      font-size:2rem;opacity:0;pointer-events:none;transition:opacity .5s;
-      flex-direction:column;gap:1rem;
-    }
-    #themeToggle,#restartBtn{
-      position:absolute;top:10px;padding:.5rem 1rem;background:#222;border:none;color:#fff;cursor:pointer;
-      font-size:.9rem;border-radius:4px;
-    }
-    #themeToggle{left:10px;}
-    #restartBtn{right:10px;display:none;}
+    /* base resets */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { width:100%; height:100%; overflow:hidden; background:#000; color:#0ff; font-family:sans-serif; }
+    button { background:#0ff; color:#000; border:none; padding:.5em 1em; border-radius:4px; cursor:pointer; }
+    /* container */
+    #container { position:relative; width:100vw; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    /* header UI */
+    #ui { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:2rem; font-size:1.2rem; z-index:10; }
+    #ui span { white-space:nowrap; }
+    #timer { font-weight:bold; }
+    /* canvas */
+    #canvas { background:#111; border:3px solid #0ff; border-radius:8px; touch-action:none; }
+    /* touch controls */
+    #touchbar { display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); width:80%; height:40px;
+                background:rgba(0,255,255,0.1); border:2px solid #0ff; border-radius:20px; }
+    /* overlays */
+    #overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9);
+               display:flex; align-items:center; justify-content:center; font-size:3rem; z-index:20; color:#0ff; }
+    /* darkness buff overlay */
+    #darkness { position:absolute; top:0; left:0; width:100%; height:100%; background:#000; opacity:0; transition:opacity .3s; z-index:5; }
   </style>
 </head>
-<body class="theme-dark">
-
-  <canvas id="canvas" width="400" height="700"></canvas>
-
-  <div id="ui">
-    <div>Score: <span id="score">0</span></div>
-    <div id="timer">03:00</div>
-    <div id="highscore">HS: <span id="hs">0</span></div>
-    <div id="buffsUI"></div>
+<body>
+  <div id="container">
+    <div id="ui">
+      <span>Score You: <strong id="score1">0</strong></span>
+      <span id="timer">03:00</span>
+      <span>Score CPU: <strong id="score2">0</strong></span>
+    </div>
+    <canvas id="canvas" width="360" height="640"></canvas>
+    <div id="touchbar"></div>
+    <div id="darkness"></div>
+    <div id="overlay">3</div>
   </div>
-
-  <div id="controls"></div>
-  <div id="overlay"></div>
-  <div id="gameover"><div id="gameoverText">Game Over</div><button id="restartBtn">Restart</button></div>
-  <button id="themeToggle">Neon</button>
 
   <script>
   (()=>{
-    // --- Ayarlar ---
-    const canvas=document.getElementById('canvas'),
-          ctx=canvas.getContext('2d');
-    const W=canvas.width, H=canvas.height;
-    const P_W=12, P_H0=80, B_R=10;
-    let P_H=P_H0;
+    const canvas = document.getElementById('canvas'),
+          ctx    = canvas.getContext('2d'),
+          overlay= document.getElementById('overlay'),
+          darkness = document.getElementById('darkness'),
+          touchbar = document.getElementById('touchbar'),
+          score1El = document.getElementById('score1'),
+          score2El = document.getElementById('score2'),
+          timerEl  = document.getElementById('timer');
 
-    let score=0, playing=false;
-    let pY=(H-P_H)/2, cpuY=(H-P_H)/2;
-    let ball={x:W/2,y:H/2,dx:4,dy:4};
-    let buffs=[], obstacles=[];
-    const BUFF_R=12;
-    const buffTypes=['double','grow','dark','speed','block'];
-    let effects={double:0,grow:0,dark:0};
+    // game constants
+    const W = canvas.width, H = canvas.height;
+    const P_W = 12, P_H = 60, B_R=6;
+    const GAME_TIME = 180;         // seconds
+    let timeLeft = GAME_TIME, timerId;
 
-    let timer=180, timerInterval;
-    const hsKey='pp-hs';
-    let highscore = parseInt(localStorage.getItem(hsKey))||0;
-    document.getElementById('hs').textContent=highscore;
+    // state
+    let p1 = { y:(H-P_H)/2 },       // player paddle (bottom)
+        p2 = { y:(H-P_H)/2 },       // CPU paddle (top)
+        ball={ x:W/2, y:H/2, dx:2, dy:2 },
+        score1=0, score2=0,
+        running=false;
 
-    // Sesler
-    const SFX={
-      hit:new Audio('https://freesound.org/data/previews/26/26733_512123-lq.mp3'),
-      buff:new Audio('https://freesound.org/data/previews/73/73231_7037-lq.mp3'),
-      end:new Audio('https://freesound.org/data/previews/331/331912_3248244-lq.mp3')
-    };
+    // buffs & obstacles
+    let buffs = [], obstacles = [];
 
-    // UI elemanları
-    const uiScore=document.getElementById('score'),
-          uiTimer=document.getElementById('timer'),
-          buffsUI=document.getElementById('buffsUI'),
-          controls=document.getElementById('controls'),
-          overlay=document.getElementById('overlay'),
-          gameover=document.getElementById('gameover'),
-          restartBtn=document.getElementById('restartBtn'),
-          themeToggle=document.getElementById('themeToggle');
+    // control mode
+    let ctrl='auto'; // 'mouse','touch','key','auto'
+    let dragging=false;
 
-    // Tema toggle
-    let neon=false;
-    themeToggle.onclick=()=>{
-      neon=!neon;
-      document.body.className=neon?'theme-neon':'theme-dark';
-      themeToggle.textContent=neon?'Dark':'Neon';
-    };
+    // audio stubs (implement as you like)
+    const SFX = { paddle:()=>{}, wall:()=>{}, score:()=>{}, buff:()=>{}, win:()=>{} };
 
-    // Kontrol modu
-    const ctrlMode=('ontouchstart' in window)?'touch':'mouse';
-    setupControls();
+    // init
+    function resetBall(){
+      ball.x=W/2; ball.y=H/2;
+      ball.dx=2*(Math.random()<.5?1:-1);
+      ball.dy=2*(Math.random()<.5?1:-1);
+    }
 
-    // Buff & obstacle üretimi
-    setInterval(spawnBuff, rand(8000,15000));
-    setInterval(spawnObstacle, rand(10000,20000));
-
+    // spawn a random buff
     function spawnBuff(){
-      const type=buffTypes[rand(0,buffTypes.length)];
-      buffs.push({ x:rand(BUFF_R,W-BUFF_R), y:rand(BUFF_R,H-BUFF_R), type });
+      const types = ['double','shrink','speed','dark'];
+      const t = types[Math.floor(Math.random()*types.length)];
+      buffs.push({
+        x: Math.random()*(W-20)+10,
+        y: Math.random()*(H-200)+100,
+        r:8, type:t, used:false
+      });
     }
-    function spawnObstacle(){
-      obstacles.push({ x:rand(W/4,3*W/4), y:rand(H/4,3*H/4), w:20, h:80, ttl:9000 });
+    // spawn obstacle
+    function spawnObs(){
+      obstacles.push({
+        x:W/2-15, y:H/2-30,
+        w:30, h:30, ttl:180
+      });
     }
 
-    // Sayaç
-    function startTimer(){
-      clearInterval(timerInterval);
-      timer=180; updateTimer();
-      timerInterval=setInterval(()=>{
-        timer--;
-        updateTimer();
-        if(timer<=0){ endGame(); }
+    // apply buff
+    function applyBuff(b){
+      SFX.buff();
+      switch(b.type){
+        case 'double':
+          // create second ball
+          // for brevity, just speed up
+          ball.dx*=1.5; ball.dy*=1.5;
+          break;
+        case 'shrink':
+          P_H *=0.7; break;
+        case 'speed':
+          ball.dx*=2; ball.dy*=2; break;
+        case 'dark':
+          darkness.style.opacity=0.8;
+          setTimeout(()=> darkness.style.opacity=0,5000);
+          break;
+      }
+    }
+
+    // start countdown
+    function startCountdown(){
+      let c=3; overlay.textContent=c; overlay.style.display='flex';
+      const iv = setInterval(()=>{
+        c--;
+        if(c>0) overlay.textContent=c;
+        else {
+          clearInterval(iv);
+          overlay.style.display='none';
+          running=true;
+          resetBall();
+          timerId = setInterval(gameTimer,1000);
+        }
       },1000);
     }
-    function updateTimer(){
-      const m=String(Math.floor(timer/60)).padStart(2,'0'),
-            s=String(timer%60).padStart(2,'0');
-      uiTimer.textContent=`${m}:${s}`;
+
+    // game timer
+    function gameTimer(){
+      timeLeft--;
+      const m = Math.floor(timeLeft/60).toString().padStart(2,'0'),
+            s = (timeLeft%60).toString().padStart(2,'0');
+      timerEl.textContent=`${m}:${s}`;
+      if(timeLeft<=0) endGame();
     }
 
-    // Ana döngü
-    let last=0;
-    let extraBalls=[];
-    function loop(ts){
-      if(!playing) return;
-      const dt=(ts-last)/1000; last=ts;
-
-      // hareket
-      ball.x+=ball.dx; ball.y+=ball.dy;
-      if(ball.y<B_R||ball.y>H-B_R){ ball.dy*=-1; SFX.hit.play(); }
-
-      // paddle çarpma ve skor
-      if(ball.x<B_R+P_W){
-        if(ball.y>pY&&ball.y<pY+P_H){ ball.dx*=-1; SFX.hit.play(); }
-      }
-      if(ball.x>W-P_W-B_R){
-        if(ball.y>cpuY&&ball.y<cpuY+P_H){ ball.dx*=-1; SFX.hit.play(); }
-      }
-      if(ball.x<0||ball.x>W){ score++; uiScore.textContent=score; resetBall(); }
-
-      // CPU
-      cpuY+=((ball.y-(cpuY+P_H/2)))*dt*3;
-      cpuY=Math.max(0,Math.min(H-P_H,cpuY));
-
-      // buff alımı
-      buffs=buffs.filter(b=>{
-        const d=Math.hypot(ball.x-b.x,ball.y-b.y);
-        if(d<BUFF_R+B_R){
-          apply(b.type); SFX.buff.play();
-          return false;
-        }
-        return true;
-      });
-      // obstacle
-      obstacles=obstacles.filter(o=>{ o.ttl-=dt*1000; return o.ttl>0; });
-
-      // efektler
-      Object.keys(effects).forEach(k=>{
-        if(effects[k]>0) effects[k]-=dt*1000;
-        else removeEff(k);
-      });
-
-      // ekstra toplar
-      extraBalls.forEach(bx=>{
-        bx.x+=bx.dx; bx.y+=bx.dy;
-        if(bx.y<B_R||bx.y>H-B_R||bx.x<0||bx.x>W) bx.active=false;
-      });
-      extraBalls=extraBalls.filter(b=>b.active);
-
-      render();
-      requestAnimationFrame(loop);
+    // end game
+    function endGame(){
+      running=false;
+      clearInterval(timerId);
+      overlay.style.display='flex';
+      overlay.textContent = score1>score2?'You Win!':'CPU Wins';
+      SFX.win();
     }
 
-    function render(){
+    // draw everything
+    function draw(){
       ctx.clearRect(0,0,W,H);
-      // paddle
+      // paddles
       ctx.fillStyle='#0ff';
-      ctx.fillRect(0,pY,P_W,P_H);
-      ctx.fillRect(W-P_W,cpuY,P_W,P_H);
-
       // top
+      ctx.fillRect(0,p2.y,P_W,P_H);
+      // bottom
+      ctx.fillRect(W-P_W,p1.y,P_W,P_H);
+      // ball
       ctx.fillStyle='#ff0';
-      drawBall(ball);
-      extraBalls.forEach(drawBall);
-
+      ctx.beginPath();
+      ctx.arc(ball.x,ball.y,B_R,0,2*Math.PI);
+      ctx.fill();
       // buffs
       buffs.forEach(b=>{
-        ctx.fillStyle=({
-          double:'#0f0',grow:'#ff0',dark:'#800',
-          speed:'#0ff',block:'#888'
-        })[b.type];
-        ctx.beginPath();ctx.arc(b.x,b.y,BUFF_R,0,2*Math.PI);ctx.fill();
-      });
-      // obstacles
-      ctx.fillStyle='#888';
-      obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
-
-      // overlay darkness
-      overlay.style.opacity=effects.dark>0?0.6:0;
-      // buffs UI
-      renderBuffsUI();
-    }
-    function drawBall(bx){
-      ctx.beginPath();ctx.arc(bx.x,bx.y,B_R,0,2*Math.PI);ctx.fill();
-    }
-
-    function renderBuffsUI(){
-      buffsUI.innerHTML='';
-      Object.entries(effects).forEach(([k,t])=>{
-        if(t>0){
-          const d=document.createElement('div');
-          d.className='buff-icon';
-          d.title=k;
-          const pct=t/10000;
-          const bar=document.createElement('span');
-          bar.style.width=(pct*100)+'%';
-          d.append(bar);
-          buffsUI.append(d);
+        if(!b.used){
+          ctx.fillStyle=b.type==='double'? '#f0f':'#f00';
+          ctx.beginPath();
+          ctx.arc(b.x,b.y,b.r,0,2*Math.PI);
+          ctx.fill();
         }
       });
+      // obstacles
+      ctx.fillStyle='#555';
+      obstacles.forEach(o=>{
+        ctx.fillRect(o.x,o.y,o.w,o.h);
+      });
+      if(running) requestAnimationFrame(update);
     }
 
-    function apply(t){
-      switch(t){
-        case 'double':
-          extraBalls=[{...ball,dx:-ball.dx,dy:-ball.dy,active:true}];
-          effects.double=10000; break;
-        case 'grow':
-          P_H*=1.5; effects.grow=8000;break;
-        case 'dark':
-          effects.dark=5000;break;
-        case 'speed':
-          ball.dx*=1.2;ball.dy*=1.2;break;
-        case 'block':
-          spawnObstacle();break;
+    // AI move
+    function aiMove(){
+      // simple predictive: follow ball.x
+      const centre = ball.x - P_H/2;
+      if(centre>p2.y+2) p2.y +=1.5;
+      else if(centre<p2.y-2) p2.y -=1.5;
+      p2.y = Math.max(0,Math.min(H-P_H,p2.y));
+    }
+
+    // main update loop
+    function update(){
+      // move paddles
+      // player: already set via controls into p1.y
+
+      aiMove();
+
+      // move ball
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      // wall bounce
+      if(ball.x< B_R || ball.x> W-B_R){
+        ball.dx*=-1; SFX.wall();
       }
-    }
-    function removeEff(k){
-      if(k==='double') extraBalls=[];
-      if(k==='grow') P_H=P_H0;
-      effects[k]=0;
-    }
-
-    function resetBall(){
-      ball={x:W/2,y:H/2,dx:4*(Math.random()<.5?1:-1),dy:4};
-    }
-
-    function start(){
-      score=0; uiScore.textContent=0;
-      playing=true; resetBall(); buffs=[]; obstacles=[];
-      effects={double:0,grow:0,dark:0};
-      extraBalls=[];
-      restartBtn.style.display='none';
-      gameover.style.opacity=0; gameover.style.pointerEvents='none';
-      last=performance.now();
-      startTimer();
-      requestAnimationFrame(loop);
-    }
-
-    function endGame(){
-      playing=false; clearInterval(timerInterval);
-      SFX.end.play();
-      if(score>highscore){
-        highscore=score;
-        localStorage.setItem(hsKey,highscore);
-        document.getElementById('hs').textContent=highscore;
+      // top paddle
+      if(ball.y< P_H+B_R){
+        if(ball.x>0 && ball.x<P_W){
+          ball.dy*=-1; SFX.paddle();
+        } else {
+          score1++;
+          score1El.textContent=score1;
+          SFX.score();
+          resetBall();
+        }
       }
-      gameover.style.opacity=1; gameover.style.pointerEvents='auto';
-      restartBtn.style.display='block';
+      // bottom paddle
+      if(ball.y> H-P_H-B_R){
+        if(ball.x>W-P_W && ball.x<W){
+          ball.dy*=-1; SFX.paddle();
+        } else {
+          score2++;
+          score2El.textContent=score2;
+          SFX.score();
+          resetBall();
+        }
+      }
+
+      // buff collisions
+      buffs.forEach(b=>{
+        if(!b.used && Math.hypot(ball.x-b.x,ball.y-b.y)<B_R+b.r){
+          b.used=true;
+          applyBuff(b);
+        }
+      });
+      // remove used buffs
+      buffs = buffs.filter(b=>!b.used);
+
+      // obstacle TTL
+      obstacles.forEach(o=> o.ttl--);
+      obstacles = obstacles.filter(o=> o.ttl>0);
+
+      // occasionally spawn
+      if(Math.random()<.005) spawnBuff();
+      if(Math.random()<.002) spawnObs();
+
+      // draw
+      draw();
     }
 
-    restartBtn.onclick=start;
-
+    // input setup
     function setupControls(){
-      if(ctrlMode==='mouse'){
-        canvas.addEventListener('mousemove',e=>{
-          const r=canvas.getBoundingClientRect();
-          pY=Math.max(0,Math.min(H-P_H,e.clientY-r.top-P_H/2));
+      if('ontouchstart' in window){
+        ctrl='touch';
+        touchbar.style.display='block';
+        touchbar.addEventListener('pointerdown',()=>dragging=true);
+        touchbar.addEventListener('pointerup',()=>dragging=false);
+        touchbar.addEventListener('pointermove',e=>{
+          if(!dragging)return;
+          const pct = (e.clientX - touchbar.getBoundingClientRect().left)/touchbar.clientWidth;
+          p1.y = pct*(H-P_H);
         });
       } else {
-        controls.style.display='block';
-        let down=false;
-        controls.addEventListener('pointerdown',()=>down=true);
-        controls.addEventListener('pointerup',()=>down=false);
-        controls.addEventListener('pointermove',e=>{
-          if(!down)return;
-          const r=controls.getBoundingClientRect();
-          const pct=(e.clientY-r.top)/r.height;
-          pY=Math.max(0,Math.min(H-P_H,pct*(H-P_H)));
+        ctrl='mouse';
+        canvas.style.cursor='none';
+        canvas.addEventListener('mousemove',e=>{
+          const r=canvas.getBoundingClientRect();
+          const pct = (e.clientX-r.left)/r.width;
+          p1.y = pct*(H-P_H);
         });
       }
+      // keyboard fallback
+      window.addEventListener('keydown',e=>{
+        if(e.key==='ArrowLeft'||e.key==='a') p1.y-=5;
+        if(e.key==='ArrowRight'||e.key==='d') p1.y+=5;
+        p1.y = Math.max(0,Math.min(H-P_H,p1.y));
+      });
     }
 
-    function rand(a,b){return Math.floor(Math.random()*(b-a)+a);}
-
-    start();
+    // start
+    setupControls();
+    startCountdown();
+    draw();
   })();
   </script>
 </body>

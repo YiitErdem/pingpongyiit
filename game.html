@@ -12,6 +12,16 @@
     #timer{position:absolute;top:10px;right:10px;font-size:1.2rem;}
     #controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:none;
       width:80%;height:60px;background:rgba(255,255,255,0.1);border-radius:30px;touch-action:none;}
+    /* Başlat overlay */
+    #startOverlay {
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;
+      z-index:10;
+    }
+    #startOverlay button {
+      padding:1rem 2rem;font-size:1.5rem;border:none;border-radius:8px;
+      background:#0ff;color:#000;cursor:pointer;
+    }
   </style>
 </head>
 <body>
@@ -23,12 +33,17 @@
   <div id="timer">02:00</div>
   <div id="controls"></div>
 
-  <!-- Firebase -->
+  <!-- Başlat overlay -->
+  <div id="startOverlay">
+    <button id="playBtn">Başlat</button>
+  </div>
+
+  <!-- Firebase SDK’ları -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
-  (async()=>{
-    // 1) Parametreler & Firebase init
+  (function(){
+    // --- 1) Ayarlar & init
     const ps=new URLSearchParams(location.search);
     const user=ps.get('user');
     if(!user) return alert('User missing');
@@ -46,33 +61,38 @@
     const db = firebase.database();
     const lbRef = db.ref(`leaderboard/${user}`);
 
-    // 2) Canvas & UI
+    // --- 2) Canvas & UI
     const c=document.getElementById('canvas'), ctx=c.getContext('2d');
     const W=c.width,H=c.height;
-    const P_H=100,P_W=12,B_R=10;
-    let score1=0,score2=0, timer=120;
-    document.getElementById('score1').textContent=0;
-    document.getElementById('score2').textContent=0;
-    document.getElementById('timer').textContent='02:00';
-
-    // 3) Oyun state
-    let state={
-      ball:{x:W/2,y:H/2,dx:6,dy:4},
-      p1:{y:(H-P_H)/2},
-      p2:{y:(H-P_H)/2},
-      playing:true
+    const score1El=document.getElementById('score1');
+    const score2El=document.getElementById('score2');
+    const timerEl=document.getElementById('timer');
+    const controls=document.getElementById('controls');
+    const startOverlay=document.getElementById('startOverlay');
+    const playBtn=document.getElementById('playBtn');
+    
+    // --- 3) Sabitler
+    const P_H=100, P_W=12, B_R=10;
+    let score1=0, score2=0, timeLeft=120;
+    
+    // --- 4) Oyun state
+    let state = {
+      ball: { x:W/2, y:H/2, dx:0, dy:0 },
+      p1: { y:(H-P_H)/2 },
+      p2: { y:(H-P_H)/2 },
+      playing: false
     };
     const buffs=[];
 
-    // 4) Rastgele buff üret
+    // --- 5) Rastgele buff üret (15s)
     function spawnBuff(){
       const x=50+Math.random()*(W-100), y=50+Math.random()*(H-100);
-      const t=['grow','shrink','double'][Math.floor(Math.random()*3)];
-      buffs.push({x,y,r:15,type:t,used:false});
+      const types=['grow','shrink','double'];
+      buffs.push({ x,y,r:15,type:types[Math.floor(Math.random()*3)],used:false });
     }
     setInterval(spawnBuff,15000);
 
-    // 5) Çizim
+    // --- 6) Çizim
     function draw(){
       ctx.clearRect(0,0,W,H);
       // paddles
@@ -84,91 +104,111 @@
       buffs.forEach(b=>{
         if(!b.used){
           ctx.beginPath();
-          ctx.fillStyle=b.type==='grow'?'#0f0':b.type==='shrink'?'#f00':'#ff0';
+          ctx.fillStyle = b.type==='grow'? '#0f0' : b.type==='shrink'? '#f00' : '#ff0';
           ctx.arc(b.x,b.y,b.r,0,2*Math.PI); ctx.fill();
         }
       });
       if(state.playing) requestAnimationFrame(draw);
     }
-    draw();
 
-    // 6) Fizik & sayaç
-    const iv=setInterval(()=>{
-      if(!state.playing) return;
-      // CPU
-      state.p2.y += (state.ball.y - (state.p2.y+P_H/2))*0.05;
-      state.p2.y=Math.max(0,Math.min(H-P_H,state.p2.y));
-      // top
-      state.ball.x+=state.ball.dx; state.ball.y+=state.ball.dy;
-      if(state.ball.y<=B_R||state.ball.y>=H-B_R) state.ball.dy*=-1;
-      // çarpışma paddle1
-      if(state.ball.x<=P_W+B_R){
-        if(state.ball.y>=state.p1.y&&state.ball.y<=state.p1.y+P_H) state.ball.dx*=-1;
-        else pointTo(2);
-      }
-      // paddle2
-      if(state.ball.x>=W-P_W-B_R){
-        if(state.ball.y>=state.p2.y&&state.ball.y<=state.p2.y+P_H) state.ball.dx*=-1;
-        else pointTo(1);
-      }
-      // buff
-      buffs.forEach(b=>{
-        if(!b.used && Math.hypot(state.ball.x-b.x,state.ball.y-b.y)<B_R+b.r){
-          b.used=true;
-          if(b.type==='grow') P_H*=1.2;
-          if(b.type==='shrink') P_H*=0.8;
-          if(b.type==='double'){
-            // kısmen çift top: geçici olarak yatay hızı iki kat yap
-            state.ball.dx*=1.5;
-          }
+    // --- 7) Fizik + zaman döngüsü (60fps)
+    let gameIv;
+    function startGameLoop(){
+      gameIv = setInterval(()=>{
+        // CPU takibi
+        state.p2.y += (state.ball.y-(state.p2.y+P_H/2))*0.05;
+        state.p2.y = Math.max(0,Math.min(H-P_H, state.p2.y));
+        // top hareket
+        state.ball.x+=state.ball.dx; state.ball.y+=state.ball.dy;
+        // duvar
+        if(state.ball.y<=B_R||state.ball.y>=H-B_R) state.ball.dy*=-1;
+        // paddle çarpışma
+        if(state.ball.x<=P_W+B_R){
+          if(state.ball.y>=state.p1.y&&state.ball.y<=state.p1.y+P_H) state.ball.dx*=-1;
+          else pointTo(2);
         }
-      });
-      // timer
-      timer--;
-      const mm=String(Math.floor(timer/60)).padStart(2,'0'),
-            ss=String(timer%60).padStart(2,'0');
-      document.getElementById('timer').textContent=`${mm}:${ss}`;
-      if(timer<=0){ state.playing=false; clearInterval(iv); endGame(); }
-    },1000/60);
+        if(state.ball.x>=W-P_W-B_R){
+          if(state.ball.y>=state.p2.y&&state.ball.y<=state.p2.y+P_H) state.ball.dx*=-1;
+          else pointTo(1);
+        }
+        // buff alımı
+        buffs.forEach(b=>{
+          if(!b.used && Math.hypot(state.ball.x-b.x,state.ball.y-b.y)<B_R+b.r){
+            b.used=true;
+            if(b.type==='grow') P_H*=1.2;
+            if(b.type==='shrink') P_H*=0.8;
+            if(b.type==='double') state.ball.dx*=1.5;
+          }
+        });
+        // sayaç
+        timeLeft--;
+        const mm=String(Math.floor(timeLeft/60)).padStart(2,'0'),
+              ss=String(timeLeft%60).padStart(2,'0');
+        timerEl.textContent=`${mm}:${ss}`;
+        if(timeLeft<=0){
+          endMatch();
+        }
+      },1000/60);
+    }
 
+    // --- 8) Puanlama
     function pointTo(pl){
       if(pl===1) score1++; else score2++;
-      document.getElementById('score1').textContent=score1;
-      document.getElementById('score2').textContent=score2;
-      // reset top
-      state.ball={x:W/2,y:H/2,dx:6*(Math.random()<.5?1:-1),dy:4};
+      score1El.textContent=score1;
+      score2El.textContent=score2;
+      resetBall();
     }
 
-    // 7) Kontroller
-    function sendY(y){
-      state.p1.y=Math.max(0,Math.min(H-P_H,y));
+    // --- 9) Topu sıfırla
+    function resetBall(){
+      state.ball.x=W/2; state.ball.y=H/2;
+      // rastgele yön
+      const signX=(Math.random()<0.5?-1:1);
+      const signY=(Math.random()<0.5?-1:1);
+      state.ball.dx=6*signX;
+      state.ball.dy=4*signY;
+    }
+
+    // --- 10) Kontroller
+    function sendPaddleY(y){
+      state.p1.y = Math.max(0,Math.min(H-P_H, y));
     }
     if('ontouchstart' in window){
-      const ctr=document.getElementById('controls'); ctr.style.display='block';
+      controls.style.display='block';
       let drag=false;
-      ctr.onpointerdown=()=>drag=true;
-      ctr.onpointerup=()=>drag=false;
-      ctr.onpointermove=e=>{
+      controls.onpointerdown=()=>drag=true;
+      controls.onpointerup=()=>drag=false;
+      controls.onpointermove=e=>{
         if(!drag) return;
-        const pct=(e.clientX-ctr.getBoundingClientRect().left)/ctr.offsetWidth;
-        sendY(pct*(H-P_H));
+        const pct=(e.clientX-controls.getBoundingClientRect().left)/controls.offsetWidth;
+        sendPaddleY(pct*(H-P_H));
       };
     } else {
       c.onmousemove=e=>{
-        sendY(e.clientY-c.getBoundingClientRect().top-P_H/2);
+        sendPaddleY(e.clientY-c.getBoundingClientRect().top-P_H/2);
       };
     }
 
-    // 8) Oyun bitişi
-    function endGame(){
+    // --- 11) Maçı bitir
+    function endMatch(){
+      clearInterval(gameIv);
+      state.playing=false;
       const winner = score1>score2?'Player':'CPU';
-      alert(`${winner} wins!\nYour score: ${score1}`);
-      // Firebase’a kaydet (Player galibiyetse +1)
-      lbRef.transaction(cur=>{
-        return { wins: (cur?.wins||0)+(winner==='Player'?1:0) };
-      });
+      alert(`${winner} kazandı!\nSenin: ${score1} – CPU: ${score2}`);
+      // Firebase leader’a kaydet
+      lbRef.transaction(cur=>({ wins:(cur?.wins||0)+(winner==='Player'?1:0) }));
       location.href='index.html';
     }
+
+    // --- 12) Oyun Başlat
+    playBtn.onclick = ()=>{
+      startOverlay.style.display='none';
+      resetBall();
+      state.playing=true;
+      draw();
+      startGameLoop();
+    };
+
   })();
   </script>
 </body>

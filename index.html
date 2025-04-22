@@ -1,109 +1,154 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ping Pong Lobi</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ping Pong Lobby</title>
   <style>
+    * { box-sizing: border-box; margin:0; padding:0; }
     body {
-      margin: 0;
-      padding: 0;
+      background: url('background.PNG') no-repeat center center/cover;
       font-family: Arial, sans-serif;
-      background: url('background.PNG') center/cover no-repeat;
-      height: 95vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     }
-    .rooms {
-      display: flex;
-      gap: 2rem;
+    .overlay {
+      background: rgba(0,0,0,0.6);
+      padding:2rem;
+      border-radius:8px;
+      width:90%;
+      max-width:1000px;
     }
-    .room {
-      background: rgba(255,255,255,0.8);
-      padding: 1rem;
-      border-radius: 8px;
-      width: 200px;
-      text-align: center;
+    h1 {
+      text-align:center;
+      color:#fff;
+      margin-bottom:1.5rem;
+      font-size:2.5rem;
     }
-    .room h2 { margin-top: 0; }
-    .status { margin: .5rem 0; }
-    .btn { margin: .25rem 0; padding: .5rem; width: 100%; cursor: pointer; }
-    .reset { margin-top: 1rem; font-size: .8rem; }
+    .tables {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+      gap:1rem;
+    }
+    .table-card {
+      background:rgba(255,255,255,0.1);
+      padding:1rem;
+      border-radius:6px;
+      color:#fff;
+    }
+    .table-card h2 {
+      margin-bottom:0.5rem;
+      font-size:1.5rem;
+      border-bottom:1px solid rgba(255,255,255,0.3);
+      padding-bottom:0.3rem;
+    }
+    .table-card p {
+      margin:0.4rem 0;
+    }
+    .buttons {
+      margin-top:1rem;
+      display:flex;
+      gap:0.5rem;
+      flex-wrap:wrap;
+    }
+    .buttons button {
+      flex:1;
+      padding:0.5rem;
+      border:none;
+      border-radius:4px;
+      background:#2196F3;
+      color:#fff;
+      cursor:pointer;
+      transition:background .2s;
+    }
+    .buttons button:nth-child(2) { background:#E91E63; }
+    .buttons button:nth-child(3) { background:#FFEB3B; color:#000; }
+    .buttons button:hover { opacity:0.8; }
   </style>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <div class="rooms">
-    <div class="room" id="room1">
-      <h2>Masa 1</h2>
-      <div class="status" id="status1">Yükleniyor…</div>
-      <button class="btn" onclick="join('room1','player1')">Player 1 Olarak Katıl</button>
-      <button class="btn" onclick="join('room1','player2')">Player 2 Olarak Katıl</button>
-      <button class="btn" onclick="join('room1','viewer')">İzleyici Olarak Katıl</button>
-      <div class="reset">
-        <input type="password" id="pwd1" placeholder="Şifre" style="width:100%;padding:.25rem">
-        <button class="btn" onclick="resetRoom('room1')">Reset</button>
+  <div class="overlay">
+    <h1>Ping Pong Lobby</h1>
+    <div class="tables">
+      <div class="table-card" id="masa1">
+        <h2>Masa 1</h2>
+        <p>Oyuncular: <span class="count">0/2</span></p>
+        <p>Süre: <span class="time">0</span> dk</p>
+        <div class="buttons">
+          <button data-room="masa1" data-role="player1">Player 1 Ol</button>
+          <button data-room="masa1" data-role="player2">Player 2 Ol</button>
+          <button data-room="masa1" data-role="viewer">İzleyici Ol</button>
+        </div>
       </div>
-    </div>
-    <div class="room" id="room2">
-      <h2>Masa 2</h2>
-      <div class="status" id="status2">Yükleniyor…</div>
-      <button class="btn" onclick="join('room2','player1')">Player 1 Olarak Katıl</button>
-      <button class="btn" onclick="join('room2','player2')">Player 2 Olarak Katıl</button>
-      <button class="btn" onclick="join('room2','viewer')">İzleyici Olarak Katıl</button>
-      <div class="reset">
-        <input type="password" id="pwd2" placeholder="Şifre" style="width:100%;padding:.25rem">
-        <button class="btn" onclick="resetRoom('room2')">Reset</button>
+      <div class="table-card" id="masa2">
+        <h2>Masa 2</h2>
+        <p>Oyuncular: <span class="count">0/2</span></p>
+        <p>Süre: <span class="time">0</span> dk</p>
+        <div class="buttons">
+          <button data-room="masa2" data-role="player1">Player 1 Ol</button>
+          <button data-room="masa2" data-role="player2">Player 2 Ol</button>
+          <button data-room="masa2" data-role="viewer">İzleyici Ol</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
   <script>
-    // Firebase config
+    // --- Firebase init ---
     const firebaseConfig = {
-      apiKey: "...",
-      authDomain: "...",
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
       databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
-      storageBucket: "...",
-      messagingSenderId: "...",
-      appId: "..."
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832"
     };
-    // Init
-    const app = firebase.initializeApp(firebaseConfig);
-    const db  = firebase.database();
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    // Odaları dinle
-    ['room1','room2'].forEach(room => {
-      const statusEl = document.getElementById('status' + room.slice(-1));
-      const refRoom = db.ref('rooms/' + room);
-      refRoom.on('value', snap => {
-        const v = snap.val() || {};
-        const p1 = v.player1 ? 'DOLU' : 'BOŞ';
-        const p2 = v.player2 ? 'DOLU' : 'BOŞ';
-        statusEl.textContent = `P1: ${p1} — P2: ${p2}`;
+    const rooms = ["masa1","masa2"];
+    rooms.forEach(room => {
+      const ref = db.ref(`rooms/${room}`);
+      // oyuncu sayısını dinle
+      ref.child('players').on('value', snap => {
+        const p = snap.val()||{};
+        const count = Object.keys(p).length;
+        document.querySelector(`#${room} .count`).textContent = `${count}/2`;
+      });
+      // süreyi dinle (dakika cinsinden)
+      ref.child('startedAt').on('value', snap=> {
+        const t0 = snap.val();
+        if(!t0) return document.querySelector(`#${room} .time`).textContent = "0";
+        const mins = Math.floor((Date.now() - t0)/60000);
+        document.querySelector(`#${room} .time`).textContent = mins;
       });
     });
 
-    function join(room, role) {
-      // Boşsa rezerve et
-      const refRoom = db.ref('rooms/' + room + '/' + role);
-      refRoom.transaction(curr => curr||true);
-      // Url ye yönlendir
-      window.location = `game.html?room=${room}&role=${role}`;
-    }
-
-    function resetRoom(room) {
-      const pwd = document.getElementById('pwd'+room.slice(-1)).value;
-      if(pwd==='1234'){
-        db.ref('rooms/' + room).set({player1:false,player2:false});
-        db.ref('game/'+room).remove();
-        alert(`${room} resetlendi.`);
-      } else alert('Yanlış şifre');
-    }
+    // butonlara tıklanınca
+    document.querySelectorAll('.buttons button').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        const room = btn.dataset.room;
+        const role = btn.dataset.role; // player1/player2/viewer
+        // players düğümüne ekle (kendi random ID'niz)
+        const uid = crypto.randomUUID();
+        db.ref(`rooms/${room}/players/${uid}`).set(role);
+        // oyunu başlatma zamanı yoksa başlat
+        db.ref(`rooms/${room}/startedAt`).once('value',s=>{
+          if(!s.exists()) db.ref(`rooms/${room}/startedAt`).set(Date.now());
+        });
+        // yönlendir
+        const target = role==="viewer"
+          ? `viewer.html?room=${room}`
+          : `game.html?room=${room}&role=${role}`;
+        location.href = target;
+      });
+    });
   </script>
 </body>
 </html>

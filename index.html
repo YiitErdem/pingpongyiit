@@ -1,227 +1,116 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Theme Switcher Demo</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
-    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
-    header div{font-size:1.2rem;}
-    .heading{font-size:1.5rem;}
-    .arena {
-      position:relative;width:900px;height:600px;
-      margin:2rem auto;background:#222;border:3px dashed #0ff;
-      touch-action:none;
+    :root {
+      --bg: #111;
+      --fg: #eee;
+      --accent: #0ff;
+      --transition: 0.3s ease;
     }
-    .player-left-paddle,.player-right-paddle,.ping-pong-ball{
-      position:absolute;border-radius:4px;
+    /* Neon Theme */
+    [data-theme="neon"] {
+      --bg: #000;
+      --fg: #0ff;
+      --accent: #f0f;
     }
-    .player-left-paddle{width:12px;height:85px;left:0;background:#0ff;}
-    .player-right-paddle{width:12px;height:85px;right:0;background:#f0f;}
-    .ping-pong-ball{width:15px;height:15px;background:#ff0;box-shadow:0 0 8px #ff0;}
-    /* overlay */
-    #overlay {
-      position: absolute;top:0;left:0;width:100%;height:100%;
-      background:rgba(0,0,0,0.7);display:flex;
-      align-items:center;justify-content:center;flex-direction:column;
-      font-size:2rem;z-index:10;
+    /* Retro Theme */
+    [data-theme="retro"] {
+      --bg: #fdf6e3;
+      --fg: #657b83;
+      --accent: #b58900;
     }
-    #overlay.hide { display:none; }
-    #overlay button {
-      margin-top:1rem;padding:.5rem 1rem;
-      font-size:1rem;cursor:pointer;
+
+    * { box-sizing: border-box; transition: background var(--transition), color var(--transition); }
+    body, html {
+      margin:0; padding:0;
+      width:100%; height:100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Segoe UI", sans-serif;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .switcher {
+      background: var(--bg);
+      border: 2px solid var(--accent);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+      box-shadow: 0 0 20px var(--accent);
+    }
+    .switcher h1 {
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+      color: var(--accent);
+    }
+    .buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+    .buttons button {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.75rem 1.25rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: transform 0.2s;
+    }
+    .buttons button:hover {
+      transform: scale(1.1);
     }
   </style>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <header>
-    <div>Player 1: <span id="score1">0</span></div>
-    <div class="heading">PING PONG</div>
-    <div>Player 2: <span id="score2">0</span></div>
-  </header>
-  <div class="arena" id="arena">
-    <div id="paddle1" class="player-left-paddle"></div>
-    <div id="ball"    class="ping-pong-ball"></div>
-    <div id="paddle2" class="player-right-paddle"></div>
-    <div id="overlay">
-      <div id="msg">Waiting for opponent...</div>
-      <button id="readyBtn" disabled>Ready</button>
+  <div class="switcher">
+    <h1>Choose Your Theme</h1>
+    <div class="buttons">
+      <button data-theme="dark">Dark</button>
+      <button data-theme="neon">Neon</button>
+      <button data-theme="retro">Retro</button>
     </div>
   </div>
+
   <script>
-  // URL params
-  const ps = new URLSearchParams(location.search);
-  const room = ps.get('room'), role = ps.get('role'); // "player1" or "player2"
+    const root = document.documentElement;
+    const STORAGE_KEY = 'pingpong-theme';
 
-  // Firebase init
-  const cfg = {
-    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-    authDomain: "masa-tenisi-v1.firebaseapp.com",
-    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "masa-tenisi-v1",
-  };
-  firebase.initializeApp(cfg);
-  const db = firebase.database();
-  const paddlesRef = db.ref(`rooms/${room}/paddles`);
-  const ballRef    = db.ref(`rooms/${room}/ball`);
-  const scoreRef   = db.ref(`rooms/${room}/score`);
-  const readyRef   = db.ref(`rooms/${room}/ready`);
-
-  // constants
-  const AW=900, AH=600, PW=12, PH=85, BR=7.5;
-  const SPEED=300, BALL_SPEED=250;
-
-  // state
-  let paddle={player1:(AH-PH)/2, player2:(AH-PH)/2};
-  let ball={x:AW/2,y:AH/2,vx:0,vy:0};
-  let score={p1:0,p2:0};
-  let keys={};
-  let bothPresent=false, amReady=false, otherReady=false;
-  let physicsStarted=false;
-
-  // UI
-  const ov = document.getElementById('overlay'),
-        msg = document.getElementById('msg'),
-        btn = document.getElementById('readyBtn');
-
-  // write own paddle pos
-  function writePaddle(y){
-    paddlesRef.child(role).set(y);
-  }
-
-  // detect presence of both
-  paddlesRef.on('value', snap=>{
-    const v=snap.val()||{};
-    bothPresent = v.player1!=null && v.player2!=null;
-    btn.disabled = !bothPresent;
-    if(bothPresent){
-      msg.textContent = 'Click Ready';
+    // Apply a theme
+    function applyTheme(name) {
+      root.setAttribute('data-theme', name);
+      localStorage.setItem(STORAGE_KEY, name);
     }
-  });
 
-  // ready flags
-  readyRef.child(role).set(false);
-  btn.onclick = ()=>{
-    amReady = true;
-    readyRef.child(role).set(true);
-    msg.textContent = 'Waiting other...';
-    btn.disabled = true;
-  };
-  readyRef.on('value',snap=>{
-    const v=snap.val()||{};
-    otherReady = (role==='player1'? v.player2:v.player1)===true;
-    if(amReady && otherReady && !physicsStarted){
-      startCountdown();
+    // On-click handlers
+    document.querySelectorAll('[data-theme]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        applyTheme(e.target.dataset.theme);
+      });
+    });
+
+    // Init: try saved, then system, then dark
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      applyTheme(saved);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      applyTheme('dark');
+    } else {
+      applyTheme('retro'); // default lightish
     }
-  });
 
-  // countdown 3..2..1
-  function startCountdown(){
-    physicsStarted = true;
-    let n=3;
-    msg.textContent = n;
-    const ci = setInterval(()=>{
-      n--;
-      if(n>0) msg.textContent=n;
-      else {
-        clearInterval(ci);
-        ov.classList.add('hide');
-        // only player1 runs physics
-        if(role==='player1') resetBall(), last=performance.now(), requestAnimationFrame(frame);
-      }
-    },1000);
-  }
-
-  // reset ball
-  function resetBall(){
-    ball.x=AW/2; ball.y=AH/2;
-    ball.vx = BALL_SPEED*(Math.random()<.5?1:-1);
-    ball.vy = BALL_SPEED*(Math.random()<.5?1:-1);
-    ballRef.set(ball);
-  }
-
-  // physics loop (only host=player1)
-  let last;
-  function frame(now){
-    const dt=(now-last)/1000; last=now;
-    // read other paddle
-    paddlesRef.child('player2').once('value',s=>{ if(s.exists()) paddle.player2=s.val(); });
-    // update own via keys already in paddle[]
-    paddle.player1 = Math.max(0,Math.min(AH-PH, paddle.player1));
-    paddlesRef.child('player1').set(paddle.player1);
-    // ball
-    ball.x+=ball.vx*dt; ball.y+=ball.vy*dt;
-    if(ball.y<=BR||ball.y>=AH-BR) ball.vy*=-1;
-    // left
-    if(ball.x<=PW+BR){
-      if(ball.y< paddle.player1||ball.y>paddle.player1+PH){
-        score.p2++; resetBall();
-      } else ball.vx=Math.abs(ball.vx);
-    }
-    // right
-    if(ball.x>=AW-PW-BR){
-      if(ball.y< paddle.player2||ball.y>paddle.player2+PH){
-        score.p1++; resetBall();
-      } else ball.vx=-Math.abs(ball.vx);
-    }
-    ballRef.set(ball);
-    scoreRef.set(score);
-    requestAnimationFrame(frame);
-  }
-
-  // everybody: render + controls
-  function render(){
-    document.getElementById('paddle1').style.top  = paddle.player1+'px';
-    document.getElementById('paddle2').style.top  = paddle.player2+'px';
-    document.getElementById('ball').style.left    = ball.x+'px';
-    document.getElementById('ball').style.top     = ball.y+'px';
-    document.getElementById('score1').textContent=score.p1;
-    document.getElementById('score2').textContent=score.p2;
-  }
-
-  paddlesRef.child('player1').on('value',s=>{ if(s.exists()) { paddle.player1=s.val(); render(); }});
-  paddlesRef.child('player2').on('value',s=>{ if(s.exists()) { paddle.player2=s.val(); render(); }});
-  ballRef.on('value',s=>{ if(s.exists()) { ball=s.val(); render(); }});
-  scoreRef.on('value',s=>{ if(s.exists()){ score=s.val(); render(); }});
-
-  // keyboard
-  window.addEventListener('keydown',e=>keys[e.key]=true);
-  window.addEventListener('keyup',  e=>keys[e.key]=false);
-  function keyLoop(){
-    if(physicsStarted){
-      if(role==='player1'){
-        if(keys['w']||keys['ArrowUp'])    paddle.player1-=SPEED/60;
-        if(keys['s']||keys['ArrowDown'])  paddle.player1+=SPEED/60;
-      }
-      if(role==='player2'){
-        if(keys['w']||keys['ArrowUp'])    paddle.player2-=SPEED/60;
-        if(keys['s']||keys['ArrowDown'])  paddle.player2+=SPEED/60;
-        paddlesRef.child('player2').set(Math.max(0,Math.min(AH-PH,paddle.player2)));
-      }
-      render();
-    }
-    requestAnimationFrame(keyLoop);
-  }
-  keyLoop();
-
-  // pointer (mouse/touch) for own
-  const arena = document.getElementById('arena');
-  arena.addEventListener('pointermove',e=>{
-    if(!physicsStarted) return;
-    const rect=arena.getBoundingClientRect(),
-          y=e.clientY-rect.top-PH/2;
-    const yy=Math.max(0,Math.min(AH-PH,y));
-    paddle[role]=yy;
-    paddlesRef.child(role).set(yy);
-  });
-
-  // initialize
-  resetBall();
-  render();
+    // React to system changes
+    window.matchMedia('(prefers-color-scheme: dark)')
+      .addEventListener('change', e => {
+        if (!localStorage.getItem(STORAGE_KEY)) {
+          applyTheme(e.matches? 'dark' : 'retro');
+        }
+      });
   </script>
 </body>
 </html>

@@ -1,234 +1,238 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Ping Pong 2P</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ping Pong Game</title>
   <style>
-    * { box-sizing: border-box; margin:0; padding:0; }
-    body, html {
-      width:100%; height:100%;
-      background: #111;
-      display: flex; justify-content: center; align-items: center;
-      color: #eee; font-family: sans-serif;
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#111; color:#fff; font-family:sans-serif; overflow:hidden; }
+    body.theme-neon { background:#000; color:#0ff; }
+    #canvas { display:block; margin:0 auto; background:#222; }
+    #ui {
+      position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      display:flex; gap:2rem; font-size:1.2rem;
     }
-    canvas {
-      border: 3px dashed #0ff;
-      background: #222;
-      touch-action: none;
+    #controls {  
+      position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+      display:none; /* dokunmatikse JS açacak */
+      width:80%; height:60px; background:rgba(255,255,255,0.1);
+      border-radius:30px; touch-action:none;
+    }
+    #restartBtn {
+      position:absolute; top:10px; right:10px;
+      padding:0.5rem 1rem; background:#c00; border:none; color:#fff;
+      font-size:1rem; cursor:pointer;
     }
   </style>
 </head>
 <body>
-  <canvas id="c" width="900" height="600"></canvas>
+
+  <canvas id="canvas" width="900" height="500"></canvas>
+  <div id="ui">
+    <div>Player 1: <span id="score1">0</span></div>
+    <div>Player 2: <span id="score2">0</span></div>
+  </div>
+  <div id="controls"></div>
+  <button id="restartBtn" style="display:none;">Yeniden Başlat</button>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
-  const CANVAS  = document.getElementById('c');
-  const ctx     = CANVAS.getContext('2d');
-  const W       = CANVAS.width, H = CANVAS.height;
-  const PAD_W   = 12, PAD_H = 100;
-  const BALL_R  = 10;
-  const PADDLE_SPEED = 400;        // px/sec
-  const BALL_SPEED0  = 350;        // serve speed
-  const BALL_SPEED_INC = 20;       // on paddle hit
-  const MAX_SCORE = 10;
+  (async()=>{
 
-  let paddles = {
-    left:  (H - PAD_H)/2,
-    right: (H - PAD_H)/2
-  };
-  let ball = { x: W/2, y: H/2, vx:0, vy:0, speed: BALL_SPEED0 };
-  let scores = { left:0, right:0 };
+    // --- 1) URL’den parametreler
+    const params = new URLSearchParams(location.search);
+    const tableId  = params.get('table');
+    const currentUser = params.get('user');
+    const theme = params.get('theme') || 'dark';
+    if(!tableId||!currentUser){ alert('Eksik parametre!'); return; }
 
-  let keys = {};                   // keyboard state
-  let dragging = null;             // 'left'|'right' for mouse/touch
-  let lastTS = 0;
-  let countdown = 3, inCountdown = true;
+    document.body.classList.add('theme-'+theme);
 
-  // UTILS
-  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-  function resetBall(){
-    ball.x = W/2; ball.y = H/2;
-    ball.speed = BALL_SPEED0;
-    // random angle between ±45° towards last scorer
-    let angle = (Math.random()*Math.PI/4) - (Math.PI/8);
-    let dir = (scores.left > scores.right ? 1 : -1);
-    ball.vx = dir * ball.speed * Math.cos(angle);
-    ball.vy = ball.speed * Math.sin(angle);
-  }
-  // COUNTDOWN
-  function startCountdown(){
-    inCountdown = true;
-    countdown = 3;
-    let iv = setInterval(()=>{
-      countdown--;
-      if(countdown<=0){
-        clearInterval(iv);
-        inCountdown = false;
-        resetBall();
-      }
-    }, 1000);
-  }
+    // --- 2) Firebase init
+    const cfg = {
+      apiKey: "...", authDomain: "...",
+      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+    };
+    firebase.initializeApp(cfg);
+    const db = firebase.database();
 
-  // DRAW
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    // center line
-    ctx.strokeStyle = '#444'; ctx.setLineDash([10,10]);
-    ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
-    ctx.setLineDash([]);
+    // --- 3) Refs
+    const lobbyRef = db.ref(`lobby/tables/${tableId}`);
+    const stateRef = db.ref(`games/${tableId}/state`);
 
-    // paddles
-    ctx.fillStyle = '#0ff';
-    ctx.fillRect(0, paddles.left, PAD_W, PAD_H);
-    ctx.fillStyle = '#f0f';
-    ctx.fillRect(W-PAD_W, paddles.right, PAD_W, PAD_H);
+    // --- 4) Canvas & UI
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const score1El = document.getElementById('score1');
+    const score2El = document.getElementById('score2');
+    const restartBtn = document.getElementById('restartBtn');
+    const controls = document.getElementById('controls');
 
-    // ball
-    ctx.fillStyle = '#ff0';
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, BALL_R,0,Math.PI*2);
-    ctx.fill();
+    // --- 5) Oyun sabitleri
+    const W = canvas.width, H = canvas.height;
+    const PADDLE_H = 100, PADDLE_W = 12, BALL_R = 10;
+    const WIN_SCORE = 7;
 
-    // scores
-    ctx.fillStyle = '#eee';
-    ctx.font = '48px monospace';
-    ctx.fillText(scores.left, W/4, 60);
-    ctx.fillText(scores.right, W*3/4, 60);
+    // --- 6) Local state
+    let role = null,                  // '1' ya da '2'
+        isHost = false,
+        state = {                     // DB’den okunacak
+          ball:{ x:W/2,y:H/2,dx:5,dy:3 },
+          p1:{ y:(H-PADDLE_H)/2 },
+          p2:{ y:(H-PADDLE_H)/2 },
+          score1:0, score2:0,
+          playing:true
+        },
+        ctrlMode = 'auto';           // 'mouse', 'key', 'touch', 'auto'
 
-    // countdown overlay
-    if(inCountdown){
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0,0,W,H);
-      ctx.fillStyle = '#0ff';
-      ctx.font = '120px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(countdown > 0 ? countdown : 'Go!', W/2, H/2 + 40);
-      ctx.textAlign = 'start';
-    }
-  }
+    // --- 7) Kullanıcı rolünü al
+    const lobbySnap = await lobbyRef.once('value');
+    const lobby = lobbySnap.val();
+    if(!lobby){ alert('Bu masada oyun bulunamadı.'); return; }
+    if(lobby.p1===currentUser) { role='1'; isHost=true; }
+    else if(lobby.p2===currentUser) role='2';
+    else { alert('Bu masada yeriniz yok.'); return; }
 
-  // UPDATE
-  function update(dt){
-    // paddles: keyboard
-    if(keys['w']) paddles.left  = clamp(paddles.left  - PADDLE_SPEED*dt, 0, H - PAD_H);
-    if(keys['s']) paddles.left  = clamp(paddles.left  + PADDLE_SPEED*dt, 0, H - PAD_H);
-    if(keys['ArrowUp'])   paddles.right = clamp(paddles.right - PADDLE_SPEED*dt, 0, H - PAD_H);
-    if(keys['ArrowDown']) paddles.right = clamp(paddles.right + PADDLE_SPEED*dt, 0, H - PAD_H);
-
-    // ball movement
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
-
-    // top/bottom bounce
-    if(ball.y < BALL_R){ ball.y = BALL_R; ball.vy *= -1; }
-    if(ball.y > H-BALL_R){ ball.y = H-BALL_R; ball.vy *= -1; }
-
-    // left paddle collision
-    if(ball.x - BALL_R < PAD_W){
-      if(ball.y > paddles.left && ball.y < paddles.left + PAD_H){
-        // compute bounce angle
-        let rel = (ball.y - (paddles.left + PAD_H/2)) / (PAD_H/2);
-        let ang = rel * Math.PI/4; // max 45°
-        ball.speed = Math.min(ball.speed + BALL_SPEED_INC, 800);
-        ball.vx =  ball.speed * Math.cos(ang);
-        ball.vy =  ball.speed * Math.sin(ang);
-        ball.x = PAD_W + BALL_R; // prevent sticking
-      } else {
-        // score right
-        scores.right++;
-        if(scores.right >= MAX_SCORE) return gameOver();
-        startCountdown();
-      }
+    // --- 8) Eğer host’muş ilk kezse state’i initialize et
+    if(isHost){
+      await stateRef.set({
+        ball: { x:W/2, y:H/2, dx:5, dy:3 },
+        p1: { y: (H-PADDLE_H)/2 },
+        p2: { y: (H-PADDLE_H)/2 },
+        score1:0, score2:0, playing:true
+      });
     }
 
-    // right paddle
-    if(ball.x + BALL_R > W - PAD_W){
-      if(ball.y > paddles.right && ball.y < paddles.right + PAD_H){
-        let rel = (ball.y - (paddles.right + PAD_H/2)) / (PAD_H/2);
-        let ang = rel * Math.PI/4;
-        ball.speed = Math.min(ball.speed + BALL_SPEED_INC, 800);
-        ball.vx = -ball.speed * Math.cos(ang);
-        ball.vy =  ball.speed * Math.sin(ang);
-        ball.x = W - PAD_W - BALL_R;
-      } else {
-        scores.left++;
-        if(scores.left >= MAX_SCORE) return gameOver();
-        startCountdown();
-      }
+    // --- 9) DB listener
+    stateRef.on('value', snap=>{
+      const v = snap.val();
+      if(v) state=v;
+      score1El.textContent = state.score1;
+      score2El.textContent = state.score2;
+    });
+
+    // --- 10) Kontrol modu otomatik algılama
+    if('ontouchstart' in window) ctrlMode='touch';
+    else ctrlMode='mouse';
+    setupControls();
+
+    // --- 11) Paddle pozisyonu yaz
+    function sendPaddleY(y){
+      const clamped = Math.max(0, Math.min(H-PADDLE_H, y));
+      stateRef.child(`p${role}/y`).set(clamped);
     }
-  }
 
-  // GAME OVER
-  function gameOver(){
-    inCountdown = true;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = '#f00';
-    ctx.font = '80px monospace';
-    ctx.textAlign = 'center';
-    let winner = scores.left > scores.right ? 'Left Player' : 'Right Player';
-    ctx.fillText(`${winner} Wins!`, W/2, H/2);
-    // restart after 3s
-    setTimeout(()=>{
-      scores.left = scores.right = 0;
-      startCountdown();
-      lastTS = 0;
-      requestAnimationFrame(loop);
-    }, 3000);
-  }
+    // --- 12) Çizim
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      // paddles
+      ctx.fillStyle='#fff';
+      ctx.fillRect(0, state.p1.y, PADDLE_W, PADDLE_H);
+      ctx.fillRect(W-PADDLE_W, state.p2.y, PADDLE_W, PADDLE_H);
+      // ball
+      ctx.beginPath();
+      ctx.arc(state.ball.x, state.ball.y, BALL_R,0,2*Math.PI);
+      ctx.fill();
 
-  // MAIN LOOP
-  function loop(ts){
-    if(!lastTS) lastTS = ts;
-    const dt = (ts - lastTS)/1000;
-    lastTS = ts;
-    if(!inCountdown) update(dt);
+      if(state.playing) requestAnimationFrame(draw);
+    }
     draw();
-    if(scores.left < MAX_SCORE && scores.right < MAX_SCORE)
-      requestAnimationFrame(loop);
-  }
 
-  // INPUT HANDLERS
-  window.addEventListener('keydown', e=> keys[e.key] = true );
-  window.addEventListener('keyup',   e=> keys[e.key] = false );
+    // --- 13) Host fizik döngüsü
+    if(isHost){
+      setInterval(()=>{
+        if(!state.playing) return;
+        let b=state.ball;
+        // hareket
+        b.x += b.dx; b.y += b.dy;
+        // duvar
+        if(b.y< BALL_R || b.y>H-BALL_R) b.dy*=-1;
+        // paddle1
+        if(b.x<=PADDLE_W+BALL_R){
+          if(b.y>=state.p1.y && b.y<=state.p1.y+PADDLE_H) b.dx*=-1;
+          else pointTo(2);
+        }
+        // paddle2
+        if(b.x>=W-PADDLE_W-BALL_R){
+          if(b.y>=state.p2.y && b.y<=state.p2.y+PADDLE_H) b.dx*=-1;
+          else pointTo(1);
+        }
+        // update ball
+        stateRef.child('ball').set(b);
+      }, 1000/60);
+    }
 
-  // MOUSE → drag paddle
-  CANVAS.addEventListener('mousedown', e=>{
-    let y = e.offsetY;
-    if(e.offsetX < W/2 && y > paddles.left && y < paddles.left+PAD_H) dragging='left';
-    if(e.offsetX > W/2 && y > paddles.right && y < paddles.right+PAD_H) dragging='right';
-  });
-  window.addEventListener('mousemove', e=>{
-    if(!dragging) return;
-    const rect = CANVAS.getBoundingClientRect();
-    let y = e.clientY - rect.top - PAD_H/2;
-    if(dragging==='left')  paddles.left  = clamp(y,0,H-PAD_H);
-    if(dragging==='right') paddles.right = clamp(y,0,H-PAD_H);
-  });
-  window.addEventListener('mouseup', ()=> dragging = null );
+    function pointTo(player){
+      // skor
+      if(player===1) state.score1++;
+      else state.score2++;
+      // kazanma?
+      if(state.score1>=WIN_SCORE||state.score2>=WIN_SCORE){
+        state.playing=false;
+        stateRef.update({ score1:state.score1, score2:state.score2, playing:false });
+        restartBtn.style.display='block';
+      } else {
+        // reset ball
+        const nv = { x:W/2, y:H/2, dx:5*(Math.random()<0.5?1:-1), dy:3 };
+        stateRef.update({
+          ball: nv,
+          score1: state.score1,
+          score2: state.score2
+        });
+      }
+    }
 
-  // TOUCH → drag
-  CANVAS.addEventListener('touchstart', e=>{
-    e.preventDefault();
-    let t = e.touches[0], rect = CANVAS.getBoundingClientRect();
-    let x = t.clientX - rect.left, y = t.clientY - rect.top;
-    if(x < W/2 && y > paddles.left && y < paddles.left+PAD_H) dragging='left';
-    if(x > W/2 && y > paddles.right && y < paddles.right+PAD_H) dragging='right';
-  }, {passive:false});
-  CANVAS.addEventListener('touchmove', e=>{
-    e.preventDefault();
-    if(!dragging) return;
-    let t = e.touches[0], rect = CANVAS.getBoundingClientRect();
-    let y = t.clientY - rect.top - PAD_H/2;
-    if(dragging==='left')  paddles.left  = clamp(y,0,H-PAD_H);
-    if(dragging==='right') paddles.right = clamp(y,0,H-PAD_H);
-  }, {passive:false});
-  CANVAS.addEventListener('touchend', ()=> dragging = null );
+    // --- 14) Restart
+    restartBtn.addEventListener('click', ()=>{
+      if(!isHost) return;
+      stateRef.set({
+        ball: { x:W/2, y:H/2, dx:5, dy:3 },
+        p1: { y:(H-PADDLE_H)/2 },
+        p2: { y:(H-PADDLE_H)/2 },
+        score1:0, score2:0, playing:true
+      });
+      restartBtn.style.display='none';
+      // evet, yeniden
+    });
 
-  // START
-  startCountdown();
-  requestAnimationFrame(loop);
+    // --- 15) Kontrolleri ayarla
+    function setupControls(){
+      if(ctrlMode==='mouse'){
+        canvas.style.cursor='none';
+        canvas.addEventListener('mousemove', e=>{
+          const rect=canvas.getBoundingClientRect();
+          sendPaddleY(e.clientY-rect.top-PADDLE_H/2);
+        });
+      } else if(ctrlMode==='touch'){
+        controls.style.display='block';
+        let dragging=false;
+        controls.addEventListener('pointerdown', e=> dragging=true);
+        controls.addEventListener('pointerup',   e=> dragging=false);
+        controls.addEventListener('pointermove', e=>{
+          if(!dragging) return;
+          const rect=controls.getBoundingClientRect();
+          const pct = (e.clientX-rect.left)/rect.width;
+          sendPaddleY(pct*(H-PADDLE_H));
+        });
+      }
+      // ortak: klavye
+      window.addEventListener('keydown', e=>{
+        if(e.key==='ArrowUp'||e.key==='w'){
+          const y = state['p'+role].y - 20;
+          sendPaddleY(y);
+        }
+        if(e.key==='ArrowDown'||e.key==='s'){
+          const y = state['p'+role].y + 20;
+          sendPaddleY(y);
+        }
+      });
+    }
 
+  })();
   </script>
 </body>
 </html>

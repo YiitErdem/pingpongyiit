@@ -2,275 +2,55 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Ping Pong Lobby</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ping Pong Başlangıç</title>
   <style>
     * { box-sizing:border-box; margin:0; padding:0; }
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #fff;
-      display: flex; flex-direction: column; align-items: center;
-      min-height: 100vh;
-      transition: background 0.3s, color 0.3s;
+    body, html {
+      width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+      background:#111; color:#fff; font-family:Arial,sans-serif;
     }
-    body.theme-neon { background:#000; color:#0ff; }
-    header {
-      width:100%; max-width:900px;
-      padding:1rem;
-      display:flex; justify-content:space-between; align-items:center;
+    #container {
+      background:rgba(255,255,255,0.05);
+      padding:2rem; border-radius:8px;
+      text-align:center;
     }
-    header h1 { font-size:1.5rem; }
-    header select {
-      padding:0.5rem; border-radius:4px; border:none;
+    input {
+      width:200px; padding:0.5rem; margin-top:1rem;
+      border:none; border-radius:4px;
       font-size:1rem;
     }
-
-    #tables {
-      display:grid;
-      grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
-      gap:1rem;
-      width:90%; max-width:900px;
-      margin-bottom:2rem;
-    }
-    .table-card {
-      background:#222;
-      border:2px solid #444;
-      border-radius:8px;
-      padding:1rem;
-      display:flex; flex-direction:column;
-      justify-content:space-between;
-      position:relative;
-    }
-    .table-card.theme-neon { border-color:#0ff; }
-    .table-card h2 { margin-bottom:0.5rem; font-size:1.25rem; }
-    .players {
-      display:flex; justify-content:space-between; margin:1rem 0;
-    }
-    .slot {
-      width:45%;
-      min-height:3rem;
-      background:#333;
-      border-radius:4px;
-      display:flex; align-items:center; justify-content:center;
-      font-size:0.9rem;
-    }
-    .buttons {
-      display:flex; gap:0.5rem;
-    }
-    .buttons button {
-      flex:1;
-      padding:0.5rem;
+    button {
+      margin-top:1.5rem;
+      padding:0.5rem 1rem;
+      font-size:1rem;
       border:none; border-radius:4px;
-      background:#28a745; color:#fff;
-      cursor:pointer; font-size:1rem;
-      transition:background 0.2s;
+      background:#0ff; color:#000;
+      cursor:pointer;
     }
-    .buttons button:disabled {
-      background:#555; cursor:not-allowed;
-    }
-
-    #countdownOverlay {
-      position:fixed; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.8);
-      display:none; align-items:center; justify-content:center;
-      z-index:100;
-      font-size:5rem; color:#fffa;
-    }
+    button:disabled { background:#555; color:#222; cursor:not-allowed; }
   </style>
 </head>
 <body>
+  <div id="container">
+    <h1>Ping Pong</h1>
+    <p>Kullanıcı adınızı girin ve Başla’ya tıklayın.</p>
+    <input type="text" id="username" placeholder="Adınız…" />
+    <br />
+    <button id="startBtn" disabled>Başla</button>
+  </div>
 
-  <header>
-    <h1>Ping Pong Lobby</h1>
-    <select id="themeSelect">
-      <option value="dark">Dark Theme</option>
-      <option value="neon">Neon Theme</option>
-    </select>
-  </header>
-
-  <div id="tables"></div>
-  <div id="countdownOverlay"></div>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
-  // UUID üret / sakla
-  function uuidv4(){
-    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
-      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16)
-    );
-  }
-  let clientId = sessionStorage.getItem('clientId');
-  if (!clientId) sessionStorage.setItem('clientId', clientId = uuidv4());
-
-  // Tema
-  const themeSelect = document.getElementById('themeSelect');
-  const savedTheme = localStorage.getItem('theme')||'dark';
-  document.body.classList.add('theme-'+savedTheme);
-  themeSelect.value = savedTheme;
-  themeSelect.addEventListener('change', ()=>{
-    document.body.classList.toggle('theme-neon', themeSelect.value==='neon');
-    localStorage.setItem('theme', themeSelect.value);
-  });
-
-  // Firebase init
-  const cfg = {
-    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-    authDomain: "masa-tenisi-v1.firebaseapp.com",
-    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "masa-tenisi-v1",
-    storageBucket: "masa-tenisi-v1.appspot.com",
-    messagingSenderId: "186015084983",
-    appId: "1:186015084983:web:86f9d88e907423f5e33832"
-  };
-  firebase.initializeApp(cfg);
-  const db = firebase.database();
-  const tablesRef = db.ref('lobby/tables');
-
-  const NUM_TABLES = 4;
-  let currentTable = null;
-  let countdownRunning = false;
-
-  // 1) Masaları oluştur
-  const tablesContainer = document.getElementById('tables');
-  for(let i=1;i<=NUM_TABLES;i++){
-    const card = document.createElement('div');
-    card.className = 'table-card';
-    card.dataset.id = i;
-    card.innerHTML = `
-      <h2>Masa ${i}</h2>
-      <div class="players">
-        <div class="slot" data-slot="1">Boş</div>
-        <div class="slot" data-slot="2">Boş</div>
-      </div>
-      <div class="buttons">
-        <button class="btn-join">Katıl</button>
-        <button class="btn-ready" disabled>Ready</button>
-        <button class="btn-reset" disabled>Reset</button>
-      </div>
-    `;
-    tablesContainer.append(card);
-  }
-
-  // 2) DB seed
-  tablesRef.once('value', snap=>{
-    if(!snap.exists()){
-      const seed = {};
-      for(let i=1;i<=NUM_TABLES;i++){
-        seed[i] = { p1:null,p2:null,ready1:false,ready2:false };
-      }
-      tablesRef.set(seed);
-    }
-  });
-
-  // 3) DB listener
-  tablesRef.on('value', snap=>{
-    const data = snap.val()||{};
-    updateLobbyUI(data);
-  });
-
-  // 4) UI güncelle
-  function updateLobbyUI(tables){
-    Object.entries(tables).forEach(([id,st])=>{
-      const card = tablesContainer.querySelector(`.table-card[data-id="${id}"]`);
-      if(!card) return;
-      const slot1 = card.querySelector('.slot[data-slot="1"]');
-      const slot2 = card.querySelector('.slot[data-slot="2"]');
-      const btnJoin  = card.querySelector('.btn-join');
-      const btnReady = card.querySelector('.btn-ready');
-      const btnReset = card.querySelector('.btn-reset');
-
-      // Slot yazısı
-      slot1.textContent = st.p1===clientId ? 'Sen'
-                        : st.p1 ? 'Dolu'
-                        : 'Boş';
-      slot2.textContent = st.p2===clientId ? 'Sen'
-                        : st.p2 ? 'Dolu'
-                        : 'Boş';
-
-      // Hangi masadayım?
-      if(st.p1===clientId||st.p2===clientId) currentTable = id;
-
-      // Buton aktif/pasif
-      const mySlot = st.p1===clientId ? '1'
-                   : st.p2===clientId ? '2'
-                   : null;
-      btnJoin.disabled  = !!mySlot || (st.p1 && st.p2);
-      btnReady.disabled = !mySlot;
-      btnReady.textContent = mySlot && st['ready'+mySlot] ? 'Cancel' : 'Ready';
-      btnReset.disabled = (st.p1!==clientId);
-
-      // Geri sayımı sadece kendi masam için
-      if(currentTable===id && st.ready1 && st.ready2){
-        startCountdown(id);
-      }
+    const inp = document.getElementById('username');
+    const btn = document.getElementById('startBtn');
+    inp.addEventListener('input', ()=> {
+      btn.disabled = inp.value.trim()==='';
     });
-  }
-
-  // 5) Butonlar
-  tablesContainer.addEventListener('click', e=>{
-    const card = e.target.closest('.table-card');
-    if(!card) return;
-    const id = card.dataset.id;
-    if(e.target.classList.contains('btn-join'))  joinTable(id);
-    if(e.target.classList.contains('btn-ready')) toggleReady(id);
-    if(e.target.classList.contains('btn-reset')) resetTable(id);
-  });
-
-  function joinTable(id){
-    tablesRef.child(id).transaction(cur=>{
-      if(!cur) cur={p1:null,p2:null,ready1:false,ready2:false};
-      if(!cur.p1) cur.p1=clientId;
-      else if(!cur.p2) cur.p2=clientId;
-      return cur;
-    },(err,ok,snap)=>{
-      if(ok){
-        const slot = snap.val().p1===clientId?'p1':'p2';
-        // bağlantı kopunca masadan çıkar
-        tablesRef.child(`${id}/${slot}`).onDisconnect().set(null);
-        tablesRef.child(`${id}/ready${slot.slice(-1)}`).onDisconnect().set(false);
-      }
+    btn.addEventListener('click', ()=>{
+      const name = encodeURIComponent(inp.value.trim());
+      location.href = `game.html?name=${name}`;
     });
-  }
-
-  function toggleReady(id){
-    tablesRef.child(id).transaction(cur=>{
-      if(!cur) return;
-      const slot = cur.p1===clientId?'1'
-                 : cur.p2===clientId?'2'
-                 : null;
-      if(!slot) return;
-      cur['ready'+slot] = !cur['ready'+slot];
-      return cur;
-    });
-  }
-
-  function resetTable(id){
-    if(!confirm(`Masa ${id} sıfırlansın mı?`)) return;
-    tablesRef.child(id).set({p1:null,p2:null,ready1:false,ready2:false});
-    countdownOverlay.style.display='none';
-    countdownRunning=false;
-  }
-
-  // 6) Geri sayım
-  const countdownOverlay = document.getElementById('countdownOverlay');
-  function startCountdown(id){
-    if(countdownRunning) return;
-    countdownRunning=true;
-    let c=3;
-    countdownOverlay.textContent=c;
-    countdownOverlay.style.display='flex';
-    const iv = setInterval(()=>{
-      c--;
-      if(c>0) countdownOverlay.textContent=c;
-      else {
-        clearInterval(iv);
-        location.href = `game.html?table=${id}&theme=${localStorage.getItem('theme')||'dark'}`;
-      }
-    },1000);
-  }
   </script>
 </body>
 </html>

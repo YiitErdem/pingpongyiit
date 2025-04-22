@@ -4,169 +4,174 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Ping Pong Match</title>
-  <link rel="stylesheet" href="styles/game.css">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;overflow:hidden;background:#111;color:#fff;}
+    #toolbar{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:0.5rem;background:rgba(0,0,0,0.6);
+    }
+    #toolbar button{background:#222;color:#fff;border:none;padding:0.3rem 0.6rem;
+      cursor:pointer;border-radius:4px;}
+    #toolbar span{font-size:1.2rem;}
+    #canvas{display:block;margin:0 auto;background:#222;}
+    #toast{
+      position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,0.7);padding:0.5rem 1rem;border-radius:4px;
+      opacity:0;transition:opacity 0.3s;
+    }
+  </style>
 </head>
-<body class="theme-dark">
+<body>
 
-  <!-- UI & Canvas -->
-  <div id="game-toolbar">
-    <button id="backLobby">← Lobby</button>
-    <span id="score1">0</span> : <span id="score2">0</span>
+  <div id="toolbar">
+    <button id="backBtn">← Lobby</button>
+    <span id="scoreDisplay">0 : 0</span>
     <button id="pauseBtn">⏸</button>
   </div>
-  <canvas id="canvas"></canvas>
-  <div id="toast-container"></div>
+  <canvas id="canvas" width="800" height="500"></canvas>
+  <div id="toast"></div>
 
-  <!-- Audio -->
-  <audio id="bgm" loop src="assets/sounds/ambient.mp3"></audio>
-  <audio id="sfx-wall" src="assets/sounds/wall.mp3"></audio>
-  <audio id="sfx-paddle" src="assets/sounds/paddle.mp3"></audio>
-  <audio id="sfx-score" src="assets/sounds/score.mp3"></audio>
-  <audio id="sfx-powerup" src="assets/sounds/powerup.mp3"></audio>
+  <script>
+  // Utils
+  function showToast(msg,ms=1000){
+    const t=document.getElementById('toast');
+    t.textContent=msg; t.style.opacity=1;
+    clearTimeout(t._h);
+    t._h=setTimeout(()=>t.style.opacity=0,ms);
+  }
 
-  <script type="module">
-  import { fixedStepLoop }  from './modules/physics.js';
-  import { Toast, vibration } from './modules/ui.js';
-  import { AudioManager }    from './modules/audio.js';
+  // Parse name
+  const params=new URLSearchParams(location.search);
+  const playerName=params.get('name')||'Oyuncu';
 
-  // --- Game constants
-  const WIDTH  = 800, HEIGHT = 500;
-  const PADDLE = { W:12, H:100, SPEED:400 };
-  const BALL   = { R:8, SPEED:300 };
-  const TIME_LIMIT = 120;     // seconds
-  const POWERUPS = [];        // will be populated dynamically
-
-  // --- Canvas Setup
-  const canvas = document.getElementById('canvas');
-  const ctx    = canvas.getContext('2d');
-  canvas.width  = WIDTH;
-  canvas.height = HEIGHT;
-
-  // --- State
-  let state = {
-    p1Y: (HEIGHT-PADDLE.H)/2,
-    p2Y: (HEIGHT-PADDLE.H)/2,
-    ball: { x:WIDTH/2, y:HEIGHT/2, vx:BALL.SPEED, vy:BALL.SPEED },
-    score1:0, score2:0,
-    timer: TIME_LIMIT,
-    paused: false
+  // State
+  const W=800,H=500;
+  const P={W:12,H:100,S:400};
+  const B={R:8,S:300};
+  let state={
+    pY:(H-P.H)/2,
+    cY:(H-P.H)/2,
+    ball:{x:W/2,y:H/2,vx:B.S,vy:B.S},
+    s1:0,s2:0,
+    paused:false,
+    time:120 // seconds
   };
 
-  // --- Audio
-  const audio = new AudioManager({
-    bgm:     document.getElementById('bgm'),
-    wall:    document.getElementById('sfx-wall'),
-    paddle:  document.getElementById('sfx-paddle'),
-    score:   document.getElementById('sfx-score'),
-    powerup: document.getElementById('sfx-powerup'),
-  });
-  audio.playBgm();
+  // Canvas
+  const c=document.getElementById('canvas'),ctx=c.getContext('2d');
 
-  // --- Input
-  let input = { up1:false, down1:false, up2:false, down2:false };
-  window.addEventListener('keydown', e=>{
-    if (e.key==='w') input.up1=true;
-    if (e.key==='s') input.down1=true;
-    if (e.key==='ArrowUp') input.up2=true;
-    if (e.key==='ArrowDown') input.down2=true;
-    if (e.key===' ') { state.paused=!state.paused; }
-  });
-  window.addEventListener('keyup', e=>{
-    if (e.key==='w') input.up1=false;
-    if (e.key==='s') input.down1=false;
-    if (e.key==='ArrowUp') input.up2=false;
-    if (e.key==='ArrowDown') input.down2=false;
+  // Controls
+  let input={};
+  c.onmousemove=e=>{
+    const r=c.getBoundingClientRect();
+    state.pY=Math.max(0,Math.min(H-P.H,e.clientY-r.top-P.H/2));
+  };
+  c.ontouchmove=e=>{
+    e.preventDefault();
+    const t=e.touches[0],r=c.getBoundingClientRect();
+    state.pY=Math.max(0,Math.min(H-P.H,t.clientY-r.top-P.H/2));
+  };
+
+  window.addEventListener('keydown',e=>{
+    if(e.key==='w') state.pY-=P.S/30;
+    if(e.key==='s') state.pY+=P.S/30;
+    if(e.key===' ') state.paused=!state.paused,document.getElementById('pauseBtn').textContent=state.paused?'▶':'⏸';
   });
 
-  // --- Fixed‑Timestep Physics Loop
-  fixedStepLoop(1/60, dt => {
-    if (state.paused) return;
+  // Buttons
+  document.getElementById('backBtn').onclick = ()=>location.href='index.html';
+  document.getElementById('pauseBtn').onclick = ()=>{
+    state.paused=!state.paused;
+    document.getElementById('pauseBtn').textContent=state.paused?'▶':'⏸';
+  };
 
-    // Paddle Movement
-    if (input.up1)   state.p1Y = Math.max(0, state.p1Y - PADDLE.SPEED*dt);
-    if (input.down1) state.p1Y = Math.min(HEIGHT-PADDLE.H, state.p1Y + PADDLE.SPEED*dt);
-    // CPU for P2
-    const target = state.ball.y - PADDLE.H/2;
-    state.p2Y += Math.sign(target - state.p2Y) * PADDLE.SPEED*0.6*dt;
-    state.p2Y = Math.max(0, Math.min(HEIGHT-PADDLE.H, state.p2Y));
-
-    // Ball Physics
-    let b = state.ball;
-    b.x += b.vx*dt; b.y += b.vy*dt;
-    // Walls
-    if (b.y < BALL.R || b.y > HEIGHT-BALL.R) {
-      b.vy *= -1; audio.play('wall'); new Toast('Wall hit!',200);
+  // Physics loop
+  let last=performance.now();
+  function loop(now){
+    const dt=(now-last)/1000; last=now;
+    if(!state.paused){
+      // Paddle AI
+      const tgt=state.ball.y-P.H/2;
+      state.cY += Math.sign(tgt-state.cY)*P.S*0.6*dt;
+      state.cY=Math.max(0,Math.min(H-P.H,state.cY));
+      // Ball
+      let b=state.ball;
+      b.x+=b.vx*dt; b.y+=b.vy*dt;
+      // Walls
+      if(b.y<=B.R||b.y>=H-B.R){ b.vy*=-1; showToast('Wall!'); }
+      // Paddles
+      if(b.x<=P.W+B.R){
+        if(b.y>state.pY&&b.y<state.pY+P.H){ b.vx*=-1; showToast('Hit!'); }
+        else score(2);
+      }
+      if(b.x>=W-P.W-B.R){
+        if(b.y>state.cY&&b.y<state.cY+P.H){ b.vx*=-1; showToast('Nice!'); }
+        else score(1);
+      }
+      // Timer
+      state.time-=dt;
+      if(state.time<=0) end();
     }
-    // Paddles
-    if (b.x < PADDLE.W+BALL.R) {
-      if (b.y > state.p1Y && b.y < state.p1Y+PADDLE.H) {
-        b.vx *= -1; audio.play('paddle'); new Toast('Nice!',150);
-      } else score(2);
-    }
-    if (b.x > WIDTH-PADDLE.W-BALL.R) {
-      if (b.y > state.p2Y && b.y < state.p2Y+PADDLE.H) {
-        b.vx *= -1; audio.play('paddle'); new Toast('Great!',150);
-      } else score(1);
-    }
-
-    // Timer
-    state.timer -= dt;
-    if (state.timer <= 0) endMatch();
-
     render();
-  });
+    requestAnimationFrame(loop);
+  }
 
-  // --- Score
-  function score(player) {
-    state[`score${player}`] += 1;
-    audio.play('score');
-    new Toast(`Player ${player} scored!`, 800);
+  function score(p){
+    if(p===1) state.s1++; else state.s2++;
+    showToast(`P${p} +1`);
     resetBall();
-    if (Math.max(state.score1, state.score2) >= 5) endMatch();
+    if(Math.max(state.s1,state.s2)>=5) end();
   }
 
-  // --- Reset Ball
-  function resetBall() {
-    let b = state.ball;
-    b.x = WIDTH/2; b.y = HEIGHT/2;
-    b.vx = (Math.random()<0.5?-1:1)*BALL.SPEED;
-    b.vy = (Math.random()<0.5?-1:1)*BALL.SPEED;
+  function resetBall(){
+    let b=state.ball;
+    b.x=W/2; b.y=H/2;
+    b.vx=(Math.random()<0.5?-1:1)*B.S;
+    b.vy=(Math.random()<0.5?-1:1)*B.S;
   }
 
-  // --- End
-  function endMatch() {
-    state.paused = true;
-    audio.stopBgm();
-    const winner = state.score1 > state.score2 ? 1 : 2;
-    new Toast(`Game Over! Player ${winner} wins.`, 4000);
+  function end(){
+    state.paused=true;
+    const winner= state.s1>state.s2? playerName:'CPU';
+    showToast(`Game Over: ${winner}`,4000);
+    // Push to Firebase leaderboard
+    try{
+      const db=firebase.database();
+      db.ref('scores/'+encodeURIComponent(playerName))
+        .set({ name:playerName, score:state.s1 });
+    }catch{}
   }
 
-  // --- Render
   function render(){
-    ctx.clearRect(0,0,WIDTH,HEIGHT);
-    // Paddles
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, state.p1Y, PADDLE.W, PADDLE.H);
-    ctx.fillRect(WIDTH-PADDLE.W, state.p2Y, PADDLE.W, PADDLE.H);
-    // Ball
+    ctx.clearRect(0,0,W,H);
+    // paddles
+    ctx.fillStyle='#fff';
+    ctx.fillRect(0,state.pY,P.W,P.H);
+    ctx.fillRect(W-P.W,state.cY,P.W,P.H);
+    // ball
     ctx.beginPath();
-    ctx.arc(state.ball.x, state.ball.y, BALL.R,0,2*Math.PI);
+    ctx.arc(state.ball.x,state.ball.y,B.R,0,2*Math.PI);
     ctx.fill();
-    // UI
-    document.getElementById('score1').textContent = state.score1;
-    document.getElementById('score2').textContent = state.score2;
+    // score
+    document.getElementById('scoreDisplay').textContent = 
+      `${state.s1} : ${state.s2}`;
   }
 
-  // --- Utilities
-  document.getElementById('backLobby').onclick = () => {
-    audio.stopBgm();
-    location.href = 'index.html';
-  };
-
-  function endMatch() { /* ... same as above ... */ }
-
-  // Start!
+  // Start
   resetBall();
+  requestAnimationFrame(loop);
+  </script>
+
+  <!-- Firebase (re-init for game page) -->
+  <script>
+    // same config as lobby
+    firebase.initializeApp({
+      apiKey: "...YOUR CONFIG...",
+      authDomain: "...",
+      databaseURL: "...default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+    });
   </script>
 </body>
 </html>

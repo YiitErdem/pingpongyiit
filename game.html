@@ -2,153 +2,197 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial‑scale=1.0"/>
-  <title>Ping Pong</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Ping Pong</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{background:#111;color:#fff;font-family:sans-serif;overflow:hidden;}
-    canvas{display:block;margin:2rem auto;background:#222;border:2px solid #0ff;}
-    #scoreUI{position:absolute;top:1rem;left:50%;transform:translateX(-50%);font-size:2rem;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body,html{width:100%;height:100%;font-family:sans-serif;overflow:hidden;}
+    body.theme-neon{background:#000;color:#0ff;}
+    body.theme-dark{background:#111;color:#fff;}
+    #canvas{display:block;margin:2rem auto;background:#222;border:2px solid #0ff;}
+    #scoreUI{
+      position:absolute;top:1rem;left:50%;transform:translateX(-50%);
+      font-size:2rem;
+    }
+    #controls{
+      position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);
+      width:80%;height:50px;background:rgba(255,255,255,0.1);
+      border-radius:25px;touch-action:none;display:none;
+    }
   </style>
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
   <div id="scoreUI">0 – 0</div>
   <canvas id="canvas" width="900" height="500"></canvas>
+  <div id="controls"></div>
 
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
   (async()=>{
-    // — 1) clientId (lobby ile aynı)
-    let cid = sessionStorage.getItem('clientId');
-    if(!cid) sessionStorage.setItem('clientId', cid = crypto.randomUUID());
 
-    // — 2) URL’den table
+    // 1) URL parametreleri
     const ps = new URLSearchParams(location.search);
-    const table = ps.get('table');
-    if(!table){ alert('Oda belirtilmemiş'); return; }
+    const tableId    = ps.get('table');
+    const currentUser= ps.get('user');
+    const theme      = ps.get('theme')      || 'dark';
+    const diffParam  = ps.get('difficulty') || 'normal';
+    if(!tableId||!currentUser){ alert('Eksik parametre!'); return; }
+    document.body.classList.add('theme-'+theme);
 
-    // — 3) Firebase init
+    // 2) Zorluk katsayısı
+    const DIFF = { easy:0.8, normal:1, hard:1.2 }[diffParam] || 1;
+
+    // 3) Firebase init
     const cfg = {
-      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      apiKey: "...", authDomain: "...",
       databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
     };
     firebase.initializeApp(cfg);
     const db = firebase.database();
 
-    // — 4) Rol kontrolü
-    const slotSnap = await db.ref(`lobby/tables/${table}`).once('value');
-    const slot = slotSnap.val()||{};
-    let role = null;
-    if(slot.p1===cid) role='p1';
-    else if(slot.p2===cid) role='p2';
-    else { alert('Bu masada yeriniz yok'); return; }
+    // 4) Lobi kontrolü: kim P1, kim P2
+    const lobbyRef = db.ref(`lobby/tables/${tableId}`);
+    const lobbySnap= await lobbyRef.once('value');
+    const lobby    = lobbySnap.val();
+    if(!lobby){ alert('Bu masada oyun yok!'); return; }
+    let role, isHost=false;
+    if(lobby.p1===currentUser){ role='1'; isHost=true; }
+    else if(lobby.p2===currentUser){ role='2'; }
+    else { alert('Bu masada yeriniz yok!'); return; }
 
-    // — 5) Oyun state referansları
-    const stateRef = db.ref(`games/${table}/state`);
-    const W=900, H=500, PH=100, PW=12, BR=10, SPEED=5, FPS=60;
-    // Local cache
-    let state = {
-      ball:{x:W/2,y:H/2,dx:SPEED,dy:SPEED},
-      p1:{y:(H-PH)/2}, p2:{y:(H-PH)/2},
-      s1:0, s2:0, playing:true
-    };
+    // 5) Oyun state ref
+    const stateRef = db.ref(`games/${tableId}/state`);
 
-    // — 6) Eğer host ve state yoksa initialize
-    const initSnap = await stateRef.once('value');
-    if(role==='p1' && !initSnap.exists()){
-      await stateRef.set(state);
+    // 6) İlk kez host ise initialize et
+    if(isHost){
+      await stateRef.set({
+        ball:{ x:450, y:250, dx:300*DIFF, dy:200*DIFF },
+        p1:{ y:207.5 }, p2:{ y:207.5 },
+        s1:0, s2:0, playing:true
+      });
     }
 
-    // — 7) Dinle ve render
-    const canvas = document.getElementById('canvas');
-    const ctx    = canvas.getContext('2d');
-    const scoreUI= document.getElementById('scoreUI');
+    // 7) Canvas, UI
+    const canvas = document.getElementById('canvas'),
+          ctx    = canvas.getContext('2d'),
+          scoreUI= document.getElementById('scoreUI'),
+          controls=document.getElementById('controls');
+    const W=900, H=500, PW=12, PH=85, BR=7.5;
 
+    // 8) Local kopya state
+    let state = { ball:{}, p1:{}, p2:{}, s1:0, s2:0, playing:false };
+
+    // 9) DB dinleyici → render + skor güncelle
     stateRef.on('value',snap=>{
       const v=snap.val();
       if(!v) return;
-      state = {
-        ball:v.ball, p1:v.p1, p2:v.p2,
-        s1:v.s1, s2:v.s2, playing:v.playing
-      };
+      state=v;
       scoreUI.textContent = `${state.s1} – ${state.s2}`;
     });
 
+    // 10) Paddle günceller: sadece kendi role
+    function sendPaddle(y){
+      const yy=Math.max(0,Math.min(H-PH,y));
+      stateRef.child(`p${role}/y`).set(yy);
+    }
+
+    // 11) Çizim
     function render(){
       ctx.clearRect(0,0,W,H);
-      // paddles
-      ctx.fillStyle = '#0ff';
+      ctx.fillStyle='#0ff';
       ctx.fillRect(0, state.p1.y, PW, PH);
-      ctx.fillStyle = '#f0f';
+      ctx.fillStyle='#f0f';
       ctx.fillRect(W-PW, state.p2.y, PW, PH);
-      // ball
       ctx.fillStyle='#ff0';
       ctx.beginPath();
-      ctx.arc(state.ball.x, state.ball.y, BR, 0, 2*Math.PI);
+      ctx.arc(state.ball.x, state.ball.y, BR,0,2*Math.PI);
       ctx.fill();
     }
-    requestAnimationFrame(function loop(){
-      render();
-      if(state.playing) requestAnimationFrame(loop);
-    });
 
-    // — 8) Host fizik döngüsü
-    if(role==='p1'){
+    // 12) Host fizik döngüsü (60fps)
+    if(isHost){
       setInterval(()=>{
         if(!state.playing) return;
-        let b = {...state.ball};
-        b.x += b.dx; b.y += b.dy;
+        let b=state.ball;
+
+        // hareket
+        b.x += b.dx/60; b.y += b.dy/60;
+
         // duvar
-        if(b.y<BR||b.y>H-BR) b.dy*=-1;
-        // sol
-        if(b.x< PW+BR){
-          if(b.y<state.p1.y||b.y>state.p1.y+PH) state.s2++;
-          else b.dx = Math.abs(b.dx);
-          b.x = W/2; b.y = H/2;
+        if(b.y<=BR||b.y>=H-BR) b.dy*=-1;
+
+        // paddle1
+        if(b.x<=PW+BR){
+          if(b.y>=state.p1.y&&b.y<=state.p1.y+PH) b.dx=Math.abs(b.dx);
+          else pointTo(2);
         }
-        // sağ
-        if(b.x>W-PW-BR){
-          if(b.y<state.p2.y||b.y>state.p2.y+PH) state.s1++;
-          else b.dx = -Math.abs(b.dx);
-          b.x = W/2; b.y = H/2;
+        // paddle2
+        if(b.x>=W-PW-BR){
+          if(b.y>=state.p2.y&&b.y<=state.p2.y+PH) b.dx=-Math.abs(b.dx);
+          else pointTo(1);
         }
-        // skor kontrol
-        if(state.s1>=7||state.s2>=7) state.playing=false;
-        // DB’ye yaz
-        stateRef.set({
-          ball:b,
-          p1:state.p1, p2:state.p2,
-          s1:state.s1, s2:state.s2,
-          playing:state.playing
-        });
-      },1000/FPS);
+
+        stateRef.child('ball').set(b);
+      },1000/60);
+
+      function pointTo(p){
+        if(p===1) state.s1++; else state.s2++;
+        let updates={ s1:state.s1, s2:state.s2 };
+        // kazanma?
+        if(state.s1>=WIN||state.s2>=WIN){
+          updates.playing=false;
+        } else {
+          // topu resetle
+          updates.ball = {
+            x:W/2, y:H/2,
+            dx:300*DIFF*(Math.random()<0.5?1:-1),
+            dy:200*DIFF*(Math.random()<0.5?1:-1)
+          };
+        }
+        stateRef.update(updates);
+      }
     }
 
-    // — 9) Kontroller
-    function sendY(y){
-      const yy = Math.max(0, Math.min(H-PH, y));
-      stateRef.child(role).child('y').set(yy);
-    }
+    // 13) Kontrol modu otomatik
+    let keys={};
+    window.addEventListener('keydown',e=>keys[e.key]=true);
+    window.addEventListener('keyup',  e=>keys[e.key]=false);
 
-    // klavye
-    window.addEventListener('keydown',e=>{
-      if(role!=='p1') return;
-      if(e.key==='w'||e.key==='ArrowUp')   sendY(state.p1.y-20);
-      if(e.key==='s'||e.key==='ArrowDown') sendY(state.p1.y+20);
-    });
-
-    // fare
-    if(role==='p2'){
-      canvas.addEventListener('mousemove', e=>{
+    // mouse vs touch
+    if('ontouchstart' in window){
+      controls.style.display='block';
+      let dragging=false;
+      controls.addEventListener('pointerdown', _=>dragging=true);
+      controls.addEventListener('pointerup',   _=>dragging=false);
+      controls.addEventListener('pointermove', e=>{
+        if(!dragging) return;
+        const r=controls.getBoundingClientRect();
+        sendPaddle((e.clientX-r.left)/r.width*(H-PH));
+      });
+    } else {
+      canvas.addEventListener('mousemove',e=>{
         const r=canvas.getBoundingClientRect();
-        sendY(e.clientY-r.top-PH/2);
+        sendPaddle(e.clientY-r.top-PH/2);
       });
     }
+
+    // 14) Her frame client‑side render + paddle
+    (function clientLoop(){
+      // klavye
+      const dt=1/60;
+      if(state.playing){
+        if((role==='1')&&(keys['w']||keys['W'])) sendPaddle(state.p1.y-SPEED*dt);
+        if((role==='1')&&(keys['s']||keys['S'])) sendPaddle(state.p1.y+SPEED*dt);
+        if((role==='2')&&(keys['ArrowUp']))   sendPaddle(state.p2.y-SPEED*dt);
+        if((role==='2')&&(keys['ArrowDown'])) sendPaddle(state.p2.y+SPEED*dt);
+      }
+      render();
+      requestAnimationFrame(clientLoop);
+    })();
 
   })();
   </script>

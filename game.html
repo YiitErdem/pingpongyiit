@@ -3,183 +3,172 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong Match</title>
+  <title>Ping Pong Match</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;background:#111;color:#fff;overflow:hidden;font-family:sans-serif;}
+    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:sans-serif;overflow:hidden;}
     #canvas{display:block;margin:0 auto;background:#222;border:3px dashed #0ff;}
     #ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2rem;font-size:1.2rem;}
+    #timer{position:absolute;top:10px;right:10px;font-size:1.2rem;}
     #controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:none;
       width:80%;height:60px;background:rgba(255,255,255,0.1);border-radius:30px;touch-action:none;}
-    #timer{position:absolute;top:10px;right:10px;font-size:1.2rem;}
   </style>
 </head>
 <body>
   <canvas id="canvas" width="900" height="500"></canvas>
   <div id="ui">
-    <div>Player: <span id="score1">0</span></div>
-    <div>CPU:    <span id="score2">0</span></div>
+    <div><strong id="score1">0</strong> – Player</div>
+    <div><strong id="score2">0</strong> – CPU</div>
   </div>
   <div id="timer">02:00</div>
   <div id="controls"></div>
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
   (async()=>{
-    // 1) Params & Firebase init
+    // 1) Parametreler & Firebase init
     const ps=new URLSearchParams(location.search);
-    const table=ps.get('table'), user=ps.get('user');
-    if(!table||!user) return alert('Eksik parametre');
-    const cfg={
-      apiKey:"AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-      authDomain:"masa-tenisi-v1.firebaseapp.com",
-      databaseURL:"https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId:"masa-tenisi-v1",
-      storageBucket:"masa-tenisi-v1.appspot.com",
-      messagingSenderId:"186015084983",
-      appId:"1:186015084983:web:86f9d88e907423f5e33832",
-      measurementId:"G-9VSFKH0NS4"
+    const user=ps.get('user');
+    if(!user) return alert('User missing');
+    const firebaseConfig = {
+      apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain: "masa-tenisi-v1.firebaseapp.com",
+      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "masa-tenisi-v1",
+      storageBucket: "masa-tenisi-v1.appspot.com",
+      messagingSenderId: "186015084983",
+      appId: "1:186015084983:web:86f9d88e907423f5e33832",
+      measurementId: "G-9VSFKH0NS4"
     };
-    firebase.initializeApp(cfg);
-    const db=firebase.database();
-    const stateRef=db.ref(`games/${table}/state`);
-    const scoreRef=db.ref(`leaderboard/${user}`);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const lbRef = db.ref(`leaderboard/${user}`);
 
     // 2) Canvas & UI
-    const canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d');
-    const W=canvas.width,H=canvas.height;
+    const c=document.getElementById('canvas'), ctx=c.getContext('2d');
+    const W=c.width,H=c.height;
     const P_H=100,P_W=12,B_R=10;
+    let score1=0,score2=0, timer=120;
+    document.getElementById('score1').textContent=0;
+    document.getElementById('score2').textContent=0;
+    document.getElementById('timer').textContent='02:00';
+
+    // 3) Oyun state
     let state={
       ball:{x:W/2,y:H/2,dx:6,dy:4},
       p1:{y:(H-P_H)/2},
       p2:{y:(H-P_H)/2},
-      score1:0,score2:0,playing:true
+      playing:true
     };
-    let timer=120; // 2dk
-    document.getElementById('score1').textContent=0;
-    document.getElementById('score2').textContent=0;
+    const buffs=[];
 
-    // 3) Host initialize
-    await stateRef.set(state);
+    // 4) Rastgele buff üret
+    function spawnBuff(){
+      const x=50+Math.random()*(W-100), y=50+Math.random()*(H-100);
+      const t=['grow','shrink','double'][Math.floor(Math.random()*3)];
+      buffs.push({x,y,r:15,type:t,used:false});
+    }
+    setInterval(spawnBuff,15000);
 
-    // 4) Listen state
-    stateRef.on('value',snap=>{
-      Object.assign(state,snap.val());
-      document.getElementById('score1').textContent=state.score1;
-      document.getElementById('score2').textContent=state.score2;
-    });
-
-    // 5) Draw loop
+    // 5) Çizim
     function draw(){
       ctx.clearRect(0,0,W,H);
-      ctx.fillStyle='#0ff';
-      ctx.fillRect(0,state.p1.y,P_W,P_H);
-      ctx.fillStyle='#f0f';
-      ctx.fillRect(W-P_W,state.p2.y,P_W,P_H);
-      ctx.beginPath();
-      ctx.fillStyle='#ff0';
-      ctx.arc(state.ball.x,state.ball.y,B_R,0,2*Math.PI);
-      ctx.fill();
+      // paddles
+      ctx.fillStyle='#0ff'; ctx.fillRect(0,state.p1.y,P_W,P_H);
+      ctx.fillStyle='#f0f'; ctx.fillRect(W-P_W,state.p2.y,P_W,P_H);
+      // ball
+      ctx.beginPath(); ctx.fillStyle='#ff0'; ctx.arc(state.ball.x,state.ball.y,B_R,0,2*Math.PI); ctx.fill();
+      // buffs
+      buffs.forEach(b=>{
+        if(!b.used){
+          ctx.beginPath();
+          ctx.fillStyle=b.type==='grow'?'#0f0':b.type==='shrink'?'#f00':'#ff0';
+          ctx.arc(b.x,b.y,b.r,0,2*Math.PI); ctx.fill();
+        }
+      });
       if(state.playing) requestAnimationFrame(draw);
     }
     draw();
 
-    // 6) Host physics + buffs + timer
-    if(true){ // single-host page
-      // random buff spawner
-      const buffs=[];
-      function spawnBuff(){
-        const x=Math.random()*(W-100)+50;
-        const y=Math.random()*(H-100)+50;
-        const type=['grow','shrink','double'][Math.floor(Math.random()*3)];
-        buffs.push({x,y,r:15,type,active:false});
+    // 6) Fizik & sayaç
+    const iv=setInterval(()=>{
+      if(!state.playing) return;
+      // CPU
+      state.p2.y += (state.ball.y - (state.p2.y+P_H/2))*0.05;
+      state.p2.y=Math.max(0,Math.min(H-P_H,state.p2.y));
+      // top
+      state.ball.x+=state.ball.dx; state.ball.y+=state.ball.dy;
+      if(state.ball.y<=B_R||state.ball.y>=H-B_R) state.ball.dy*=-1;
+      // çarpışma paddle1
+      if(state.ball.x<=P_W+B_R){
+        if(state.ball.y>=state.p1.y&&state.ball.y<=state.p1.y+P_H) state.ball.dx*=-1;
+        else pointTo(2);
       }
-      setInterval(spawnBuff,20000+Math.random()*10000);
-
-      const iv=setInterval(()=>{
-        if(!state.playing) return;
-        // move paddles
-        // CPU autoplayer
-        state.p2.y += (state.ball.y - (state.p2.y+P_H/2)) * 0.05;
-        state.p2.y=Math.max(0,Math.min(H-P_H,state.p2.y));
-        // ball
-        state.ball.x+=state.ball.dx;
-        state.ball.y+=state.ball.dy;
-        if(state.ball.y<=B_R||state.ball.y>=H-B_R) state.ball.dy*=-1;
-        // paddle1 collision
-        if(state.ball.x<=P_W+B_R){
-          if(state.ball.y>=state.p1.y&&state.ball.y<=state.p1.y+P_H) state.ball.dx*=-1;
-          else pointTo(2);
-        }
-        // paddle2
-        if(state.ball.x>=W-P_W-B_R){
-          if(state.ball.y>=state.p2.y&&state.ball.y<=state.p2.y+P_H) state.ball.dx*=-1;
-          else pointTo(1);
-        }
-        // buff collision
-        buffs.forEach(b=>{
-          if(!b.active && Math.hypot(state.ball.x-b.x,state.ball.y-b.y)<B_R+b.r){
-            b.active=true;
-            if(b.type==='grow') P_H*=1.2;
-            if(b.type==='shrink') P_H*=0.8;
-            if(b.type==='double'){
-              // spawn second ball
-              stateRef.child('ball2').set({...state.ball,dx:-state.ball.dx,dy:state.ball.dy});
-            }
+      // paddle2
+      if(state.ball.x>=W-P_W-B_R){
+        if(state.ball.y>=state.p2.y&&state.ball.y<=state.p2.y+P_H) state.ball.dx*=-1;
+        else pointTo(1);
+      }
+      // buff
+      buffs.forEach(b=>{
+        if(!b.used && Math.hypot(state.ball.x-b.x,state.ball.y-b.y)<B_R+b.r){
+          b.used=true;
+          if(b.type==='grow') P_H*=1.2;
+          if(b.type==='shrink') P_H*=0.8;
+          if(b.type==='double'){
+            // kısmen çift top: geçici olarak yatay hızı iki kat yap
+            state.ball.dx*=1.5;
           }
-        });
-        // timer--
-        if(--timer<=0){
-          state.playing=false;
-          clearInterval(iv);
         }
-        stateRef.set(state);
-      },1000/60);
+      });
+      // timer
+      timer--;
+      const mm=String(Math.floor(timer/60)).padStart(2,'0'),
+            ss=String(timer%60).padStart(2,'0');
+      document.getElementById('timer').textContent=`${mm}:${ss}`;
+      if(timer<=0){ state.playing=false; clearInterval(iv); endGame(); }
+    },1000/60);
 
-      function pointTo(pl){
-        if(pl===1) state.score1++; else state.score2++;
-        // reset
-        state.ball={x:W/2,y:H/2,dx:6*(Math.random()<.5?1:-1),dy:4};
-        stateRef.update({score1:state.score1,score2:state.score2,ball:state.ball});
-        // update leaderboard
-        scoreRef.transaction(cur=>({wins:(cur?.wins||0)+ (pl===1?1:0)}));
-      }
+    function pointTo(pl){
+      if(pl===1) score1++; else score2++;
+      document.getElementById('score1').textContent=score1;
+      document.getElementById('score2').textContent=score2;
+      // reset top
+      state.ball={x:W/2,y:H/2,dx:6*(Math.random()<.5?1:-1),dy:4};
     }
 
-    // 7) Controls (mouse & touch)
+    // 7) Kontroller
     function sendY(y){
-      stateRef.child('p1/y').set(Math.max(0,Math.min(H-P_H,y)));
+      state.p1.y=Math.max(0,Math.min(H-P_H,y));
     }
     if('ontouchstart' in window){
       const ctr=document.getElementById('controls'); ctr.style.display='block';
       let drag=false;
-      ctr.addEventListener('pointerdown',()=>drag=true);
-      ctr.addEventListener('pointerup',()=>drag=false);
-      ctr.addEventListener('pointermove',e=>{
+      ctr.onpointerdown=()=>drag=true;
+      ctr.onpointerup=()=>drag=false;
+      ctr.onpointermove=e=>{
         if(!drag) return;
         const pct=(e.clientX-ctr.getBoundingClientRect().left)/ctr.offsetWidth;
         sendY(pct*(H-P_H));
-      });
+      };
     } else {
-      canvas.addEventListener('mousemove',e=>{
-        const y=e.clientY-canvas.getBoundingClientRect().top-P_H/2;
-        sendY(y);
-      });
+      c.onmousemove=e=>{
+        sendY(e.clientY-c.getBoundingClientRect().top-P_H/2);
+      };
     }
 
-    // 8) Countdown & start
-    const overlay=document.createElement('div');
-    overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;'+
-      'background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;'+
-      'font-size:5rem;color:#fff;z-index:10';
-    document.body.append(overlay);
-    let cnt=3; overlay.textContent=cnt;
-    const ci=setInterval(()=>{
-      cnt--; if(cnt>0) overlay.textContent=cnt;
-      else{ clearInterval(ci); overlay.remove(); }
-    },1000);
-
+    // 8) Oyun bitişi
+    function endGame(){
+      const winner = score1>score2?'Player':'CPU';
+      alert(`${winner} wins!\nYour score: ${score1}`);
+      // Firebase’a kaydet (Player galibiyetse +1)
+      lbRef.transaction(cur=>{
+        return { wins: (cur?.wins||0)+(winner==='Player'?1:0) };
+      });
+      location.href='index.html';
+    }
   })();
   </script>
 </body>

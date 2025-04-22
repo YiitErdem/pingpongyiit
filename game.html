@@ -101,6 +101,7 @@
           score1:0, score2:0,
           playing:true
         },
+        pendingPaddleY = null,  // for throttled writes
         ctrlMode='auto';
 
     // 6) Determine role by reading lobby
@@ -111,23 +112,20 @@
     else if (lVal.p2 === clientId) { role='2';               }
     else                            { alert('Bu masada yeriniz yok'); return; }
 
-    // 7) onDisconnect clean-up
+    // 7) onDisconnect clean-up & pause if other leaves
     lobbyRef.child(`p${role}`).onDisconnect().set(null);
     lobbyRef.child(`ready${role}`).onDisconnect().set(false);
-    // also pause if the other leaves
     const other = role==='1'?'p2':'p1';
     lobbyRef.child(other).on('value',snap=>{
-      if (!snap.exists()){
-        stateRef.child('playing').set(false);
-      }
+      if (!snap.exists()) stateRef.child('playing').set(false);
     });
 
     // 8) If host: initialize game state
     if (isHost){
       await stateRef.set({
         ball: {x:W/2, y:H/2, dx:5, dy:3},
-        p1: {y:(H-PADDLE_H)/2},
-        p2: {y:(H-PADDLE_H)/2},
+        p1:   {y:(H-PADDLE_H)/2},
+        p2:   {y:(H-PADDLE_H)/2},
         score1:0, score2:0, playing:true
       });
     }
@@ -138,7 +136,7 @@
       if (v) state = v;
       score1El.textContent = state.score1;
       score2El.textContent = state.score2;
-      // show/hide pause overlay
+      // pause overlay
       if (!state.playing && state.score1<WIN_SCORE && state.score2<WIN_SCORE) {
         pauseOverlay.style.display = 'flex';
       } else {
@@ -151,14 +149,20 @@
     else ctrlMode='mouse';
     setupControls();
 
-    // 11) Draw loop
+    // 11) Throttled paddle writer @30Hz
+    setInterval(()=>{
+      if (pendingPaddleY !== null) {
+        stateRef.child(`p${role}/y`).set(pendingPaddleY);
+        pendingPaddleY = null;
+      }
+    }, 1000/30);
+
+    // 12) Draw loop
     function draw(){
       ctx.clearRect(0,0,W,H);
-      // paddles
       ctx.fillStyle='#fff';
       ctx.fillRect(0, state.p1.y, PADDLE_W, PADDLE_H);
       ctx.fillRect(W-PADDLE_W, state.p2.y, PADDLE_W, PADDLE_H);
-      // ball
       ctx.beginPath();
       ctx.arc(state.ball.x, state.ball.y, BALL_R,0,2*Math.PI);
       ctx.fill();
@@ -166,21 +170,18 @@
     }
     draw();
 
-    // 12) Host physics @60FPS
+    // 13) Host physics @60Hz
     if (isHost){
       setInterval(()=>{
         if (!state.playing) return;
         const b = state.ball;
         b.x += b.dx; b.y += b.dy;
-        // top/bottom bounce
-        if (b.y< BALL_R || b.y>H-BALL_R) b.dy*=-1;
-        // left
-        if (b.x<=PADDLE_W+BALL_R){
+        if (b.y < BALL_R || b.y > H-BALL_R) b.dy *= -1;
+        if (b.x <= PADDLE_W+BALL_R) {
           if (b.y>=state.p1.y && b.y<=state.p1.y+PADDLE_H) b.dx = Math.abs(b.dx);
           else pointTo(2);
         }
-        // right
-        if (b.x>=W-PADDLE_W-BALL_R){
+        if (b.x >= W-PADDLE_W-BALL_R) {
           if (b.y>=state.p2.y && b.y<=state.p2.y+PADDLE_H) b.dx = -Math.abs(b.dx);
           else pointTo(1);
         }
@@ -196,40 +197,35 @@
         restartBtn.style.display='block';
       } else {
         const nv = {x:W/2,y:H/2,dx:5*(Math.random()<0.5?1:-1),dy:3};
-        stateRef.update({
-          ball: nv,
-          score1:state.score1,
-          score2:state.score2
-        });
+        stateRef.update({ ball:nv, score1:state.score1, score2:state.score2 });
       }
     }
 
-    // 13) Restart
+    // 14) Restart
     restartBtn.onclick = ()=>{
       if (!isHost) return;
       stateRef.set({
         ball: {x:W/2, y:H/2, dx:5, dy:3},
-        p1: {y:(H-PADDLE_H)/2},
-        p2: {y:(H-PADDLE_H)/2},
+        p1:   {y:(H-PADDLE_H)/2},
+        p2:   {y:(H-PADDLE_H)/2},
         score1:0, score2:0, playing:true
       });
-      restartBtn.style.display = 'none';
+      restartBtn.style.display='none';
     };
 
-    // 14) Controls
+    // 15) Controls
     function setupControls(){
-      function sendY(y){
-        const c = Math.max(0, Math.min(H-PADDLE_H, y));
-        stateRef.child(`p${role}/y`).set(c);
+      function queueY(y){
+        pendingPaddleY = Math.max(0, Math.min(H-PADDLE_H, y));
       }
       if (ctrlMode==='mouse'){
-        canvas.style.cursor = 'none';
+        canvas.style.cursor='none';
         canvas.onmousemove = e=>{
           const r = canvas.getBoundingClientRect();
-          sendY(e.clientY - r.top - PADDLE_H/2);
+          queueY(e.clientY - r.top - PADDLE_H/2);
         };
       } else {
-        controls.style.display = 'block';
+        controls.style.display='block';
         let down=false;
         controls.onpointerdown = ()=>down=true;
         controls.onpointerup   = ()=>down=false;
@@ -237,18 +233,13 @@
           if (!down) return;
           const r = controls.getBoundingClientRect();
           const pct = (e.clientX - r.left)/r.width;
-          sendY(pct*(H-PADDLE_H));
+          queueY(pct*(H-PADDLE_H));
         };
       }
-      // keyboard always available
       window.addEventListener('keydown', e=>{
         const step = 20;
-        if (e.key==='ArrowUp'||e.key==='w'){
-          sendY(state[`p${role}`].y - step);
-        }
-        if (e.key==='ArrowDown'||e.key==='s'){
-          sendY(state[`p${role}`].y + step);
-        }
+        if (e.key==='ArrowUp'||e.key==='w') queueY(state[`p${role}`].y - step);
+        if (e.key==='ArrowDown'||e.key==='s') queueY(state[`p${role}`].y + step);
       });
     }
 

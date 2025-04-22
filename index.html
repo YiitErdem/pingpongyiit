@@ -2,152 +2,101 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Ping Pong Lobby</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ping Pong Lobby</title>
   <style>
-    * { box-sizing: border-box; margin:0; padding:0; }
-    body {
-      background: url('background.PNG') no-repeat center center/cover;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html {
+      width: 100%; height: 100%;
       font-family: Arial, sans-serif;
-      height:100vh;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      color: #fff; overflow: hidden;
+      background: url('background.PNG') center/cover no-repeat;
     }
-    .overlay {
+    #rooms {
+      display: flex; gap: 2rem;
+      justify-content: center; align-items: center;
+      height: 100%;
+    }
+    .room {
       background: rgba(0,0,0,0.6);
-      padding:2rem;
-      border-radius:8px;
-      width:90%;
-      max-width:1000px;
+      padding: 1rem; border: 2px solid #0ff;
+      width: 200px; text-align: center;
+      border-radius: 8px;
     }
-    h1 {
-      text-align:center;
-      color:#fff;
-      margin-bottom:1.5rem;
-      font-size:2.5rem;
+    .room h2 { margin-bottom: .5rem; }
+    .room p { margin: .5rem 0; }
+    .btn {
+      display: block; width: 100%;
+      padding: .5rem; margin-top: .5rem;
+      background: #0ff; color: #000;
+      border: none; border-radius: 4px;
+      cursor: pointer; font-weight: bold;
     }
-    .tables {
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
-      gap:1rem;
-    }
-    .table-card {
-      background:rgba(255,255,255,0.1);
-      padding:1rem;
-      border-radius:6px;
-      color:#fff;
-    }
-    .table-card h2 {
-      margin-bottom:0.5rem;
-      font-size:1.5rem;
-      border-bottom:1px solid rgba(255,255,255,0.3);
-      padding-bottom:0.3rem;
-    }
-    .table-card p {
-      margin:0.4rem 0;
-    }
-    .buttons {
-      margin-top:1rem;
-      display:flex;
-      gap:0.5rem;
-      flex-wrap:wrap;
-    }
-    .buttons button {
-      flex:1;
-      padding:0.5rem;
-      border:none;
-      border-radius:4px;
-      background:#2196F3;
-      color:#fff;
-      cursor:pointer;
-      transition:background .2s;
-    }
-    .buttons button:nth-child(2) { background:#E91E63; }
-    .buttons button:nth-child(3) { background:#FFEB3B; color:#000; }
-    .buttons button:hover { opacity:0.8; }
+    .btn:disabled { background: #555; cursor: not-allowed; }
   </style>
-  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <div class="overlay">
-    <h1>Ping Pong Lobby</h1>
-    <div class="tables">
-      <div class="table-card" id="masa1">
-        <h2>Masa 1</h2>
-        <p>Oyuncular: <span class="count">0/2</span></p>
-        <p>Süre: <span class="time">0</span> dk</p>
-        <div class="buttons">
-          <button data-room="masa1" data-role="player1">Player 1 Ol</button>
-          <button data-room="masa1" data-role="player2">Player 2 Ol</button>
-          <button data-room="masa1" data-role="viewer">İzleyici Ol</button>
-        </div>
-      </div>
-      <div class="table-card" id="masa2">
-        <h2>Masa 2</h2>
-        <p>Oyuncular: <span class="count">0/2</span></p>
-        <p>Süre: <span class="time">0</span> dk</p>
-        <div class="buttons">
-          <button data-room="masa2" data-role="player1">Player 1 Ol</button>
-          <button data-room="masa2" data-role="player2">Player 2 Ol</button>
-          <button data-room="masa2" data-role="viewer">İzleyici Ol</button>
-        </div>
-      </div>
-    </div>
+  <div id="rooms">
+    <!-- JS will inject two room cards here -->
   </div>
 
   <script>
-    // --- Firebase init ---
-    const firebaseConfig = {
+    // --- Firebase init
+    const cfg = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
       databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
-      storageBucket: "masa-tenisi-v1.appspot.com",
-      messagingSenderId: "186015084983",
-      appId: "1:186015084983:web:86f9d88e907423f5e33832"
     };
-    firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(cfg);
     const db = firebase.database();
 
-    const rooms = ["masa1","masa2"];
+    const rooms = ['masa1','masa2'];
+    const container = document.getElementById('rooms');
+
     rooms.forEach(room => {
-      const ref = db.ref(`rooms/${room}`);
-      // oyuncu sayısını dinle
-      ref.child('players').on('value', snap => {
-        const p = snap.val()||{};
-        const count = Object.keys(p).length;
-        document.querySelector(`#${room} .count`).textContent = `${count}/2`;
-      });
-      // süreyi dinle (dakika cinsinden)
-      ref.child('startedAt').on('value', snap=> {
-        const t0 = snap.val();
-        if(!t0) return document.querySelector(`#${room} .time`).textContent = "0";
-        const mins = Math.floor((Date.now() - t0)/60000);
-        document.querySelector(`#${room} .time`).textContent = mins;
+      const ref = db.ref(`rooms/${room}/paddles`);
+      // build card
+      const card = document.createElement('div');
+      card.className = 'room';
+      card.innerHTML = `
+        <h2>${room.toUpperCase()}</h2>
+        <p>Player 1: <span class="slot1">–</span></p>
+        <p>Player 2: <span class="slot2">–</span></p>
+        <button data-room="${room}" data-role="player1" class="btn btn1">Join P1</button>
+        <button data-room="${room}" data-role="player2" class="btn btn2">Join P2</button>
+      `;
+      container.append(card);
+
+      // listen occupancy
+      ref.on('value', snap => {
+        const data = snap.val()||{};
+        const p1v = data.player1!=null, p2v = data.player2!=null;
+        card.querySelector('.slot1').textContent = p1v? '✔':'✖';
+        card.querySelector('.slot2').textContent = p2v? '✔':'✖';
+        card.querySelector('.btn1').disabled = p1v;
+        card.querySelector('.btn2').disabled = p2v;
       });
     });
 
-    // butonlara tıklanınca
-    document.querySelectorAll('.buttons button').forEach(btn=>{
-      btn.addEventListener('click', e=>{
-        const room = btn.dataset.room;
-        const role = btn.dataset.role; // player1/player2/viewer
-        // players düğümüne ekle (kendi random ID'niz)
-        const uid = crypto.randomUUID();
-        db.ref(`rooms/${room}/players/${uid}`).set(role);
-        // oyunu başlatma zamanı yoksa başlat
-        db.ref(`rooms/${room}/startedAt`).once('value',s=>{
-          if(!s.exists()) db.ref(`rooms/${room}/startedAt`).set(Date.now());
+    // click handlers
+    container.addEventListener('click', e => {
+      if (!e.target.matches('.btn')) return;
+      const room = e.target.dataset.room;
+      const role = e.target.dataset.role;
+      // initialize paddle pos
+      const startY = (600-85)/2;
+      firebase.database()
+        .ref(`rooms/${room}/paddles/${role}`)
+        .set(startY)
+        .then(_ => {
+          // clear old ready flags
+          firebase.database().ref(`rooms/${room}/ready`).remove();
+          // navigate to game
+          location.href = `game.html?room=${room}&role=${role}`;
         });
-        // yönlendir
-        const target = role==="viewer"
-          ? `viewer.html?room=${room}`
-          : `game.html?room=${room}&role=${role}`;
-        location.href = target;
-      });
     });
   </script>
 </body>

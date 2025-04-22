@@ -2,198 +2,165 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Ping Pong</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ping Pong Game</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;font-family:sans-serif;overflow:hidden;}
-    body.theme-neon{background:#000;color:#0ff;}
-    body.theme-dark{background:#111;color:#fff;}
-    #canvas{display:block;margin:2rem auto;background:#222;border:2px solid #0ff;}
-    #scoreUI{
-      position:absolute;top:1rem;left:50%;transform:translateX(-50%);
-      font-size:2rem;
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body, html {
+      width:100%; height:100%;
+      background:#000; overflow:hidden;
+      font-family:Arial,sans-serif; color:#0ff;
     }
-    #controls{
-      position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);
-      width:80%;height:50px;background:rgba(255,255,255,0.1);
-      border-radius:25px;touch-action:none;display:none;
+    canvas { background:#111; display:block; margin:0 auto; }
+    #score {
+      position:absolute; top:10px; left:50%;
+      transform:translateX(-50%);
+      font-size:1.5rem; letter-spacing:4px;
+    }
+    #score span { margin:0 1rem; }
+    #slider {
+      position:absolute; bottom:20px; left:50%;
+      transform:translateX(-50%);
+      width:80%; max-width:400px;
+      display:none;
+    }
+    @media (pointer: coarse) {
+      #slider { display:block; }
+      canvas { touch-action:none; }
     }
   </style>
 </head>
 <body>
 
-  <div id="scoreUI">0 – 0</div>
-  <canvas id="canvas" width="900" height="500"></canvas>
-  <div id="controls"></div>
+  <div id="score">
+    <span id="playerName"></span>
+    <span id="pScore">0</span>–
+    <span id="aiScore">0</span>
+    <span>Computer</span>
+  </div>
+  <canvas id="c" width="900" height="500"></canvas>
+  <input type="range" id="slider" min="0" max="400" value="200" />
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
-  (async()=>{
+  (()=>{
+    // params
+    const params = new URLSearchParams(location.search);
+    const playerName = decodeURIComponent(params.get('name')||'You');
+    document.getElementById('playerName').textContent = playerName;
 
-    // 1) URL parametreleri
-    const ps = new URLSearchParams(location.search);
-    const tableId    = ps.get('table');
-    const currentUser= ps.get('user');
-    const theme      = ps.get('theme')      || 'dark';
-    const diffParam  = ps.get('difficulty') || 'normal';
-    if(!tableId||!currentUser){ alert('Eksik parametre!'); return; }
-    document.body.classList.add('theme-'+theme);
+    // canvas
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
 
-    // 2) Zorluk katsayısı
-    const DIFF = { easy:0.8, normal:1, hard:1.2 }[diffParam] || 1;
+    // paddles & ball
+    const PADDLE_W=12, PADDLE_H=100, BALL_R=10;
+    let pY = (H-PADDLE_H)/2,
+        aiY = (H-PADDLE_H)/2,
+        ball = { x:W/2, y:H/2, vx:5, vy:3 },
+        scoreP=0, scoreA=0;
 
-    // 3) Firebase init
-    const cfg = {
-      apiKey: "...", authDomain: "...",
-      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "masa-tenisi-v1",
-    };
-    firebase.initializeApp(cfg);
-    const db = firebase.database();
+    // slider for mobile
+    const slider = document.getElementById('slider');
+    slider.max = H-PADDLE_H;
+    slider.addEventListener('input', ()=> pY = +slider.value);
 
-    // 4) Lobi kontrolü: kim P1, kim P2
-    const lobbyRef = db.ref(`lobby/tables/${tableId}`);
-    const lobbySnap= await lobbyRef.once('value');
-    const lobby    = lobbySnap.val();
-    if(!lobby){ alert('Bu masada oyun yok!'); return; }
-    let role, isHost=false;
-    if(lobby.p1===currentUser){ role='1'; isHost=true; }
-    else if(lobby.p2===currentUser){ role='2'; }
-    else { alert('Bu masada yeriniz yok!'); return; }
-
-    // 5) Oyun state ref
-    const stateRef = db.ref(`games/${tableId}/state`);
-
-    // 6) İlk kez host ise initialize et
-    if(isHost){
-      await stateRef.set({
-        ball:{ x:450, y:250, dx:300*DIFF, dy:200*DIFF },
-        p1:{ y:207.5 }, p2:{ y:207.5 },
-        s1:0, s2:0, playing:true
-      });
-    }
-
-    // 7) Canvas, UI
-    const canvas = document.getElementById('canvas'),
-          ctx    = canvas.getContext('2d'),
-          scoreUI= document.getElementById('scoreUI'),
-          controls=document.getElementById('controls');
-    const W=900, H=500, PW=12, PH=85, BR=7.5;
-
-    // 8) Local kopya state
-    let state = { ball:{}, p1:{}, p2:{}, s1:0, s2:0, playing:false };
-
-    // 9) DB dinleyici → render + skor güncelle
-    stateRef.on('value',snap=>{
-      const v=snap.val();
-      if(!v) return;
-      state=v;
-      scoreUI.textContent = `${state.s1} – ${state.s2}`;
+    // mouse control for desktop
+    canvas.addEventListener('mousemove', e=>{
+      if(window.matchMedia('(pointer: coarse)').matches) return;
+      const rect=canvas.getBoundingClientRect();
+      pY = e.clientY - rect.top - PADDLE_H/2;
     });
 
-    // 10) Paddle günceller: sadece kendi role
-    function sendPaddle(y){
-      const yy=Math.max(0,Math.min(H-PH,y));
-      stateRef.child(`p${role}/y`).set(yy);
-    }
-
-    // 11) Çizim
-    function render(){
+    // draw
+    function draw(){
       ctx.clearRect(0,0,W,H);
-      ctx.fillStyle='#0ff';
-      ctx.fillRect(0, state.p1.y, PW, PH);
+      // center line
+      ctx.strokeStyle='#0ff'; ctx.setLineDash([10,10]);
+      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // paddles
+      ctx.fillStyle='#0f0';
+      ctx.fillRect(0,pY,PADDLE_W,PADDLE_H);
       ctx.fillStyle='#f0f';
-      ctx.fillRect(W-PW, state.p2.y, PW, PH);
+      ctx.fillRect(W-PADDLE_W,aiY,PADDLE_W,PADDLE_H);
+
+      // ball with glow
       ctx.fillStyle='#ff0';
-      ctx.beginPath();
-      ctx.arc(state.ball.x, state.ball.y, BR,0,2*Math.PI);
+      ctx.shadowColor='#ff0'; ctx.shadowBlur=10;
+      ctx.beginPath(); ctx.arc(ball.x,ball.y,BALL_R,0,2*Math.PI);
       ctx.fill();
+      ctx.shadowBlur=0;
+
+      requestAnimationFrame(draw);
     }
 
-    // 12) Host fizik döngüsü (60fps)
-    if(isHost){
-      setInterval(()=>{
-        if(!state.playing) return;
-        let b=state.ball;
+    // AI moves towards ball
+    function updateAI(){
+      const mid = aiY + PADDLE_H/2;
+      if(mid < ball.y - 10) aiY += 4;
+      else if(mid > ball.y + 10) aiY -= 4;
+      aiY = Math.max(0, Math.min(H-PADDLE_H, aiY));
+    }
 
-        // hareket
-        b.x += b.dx/60; b.y += b.dy/60;
+    // game loop
+    function loop(){
+      // move ball
+      ball.x += ball.vx; ball.y += ball.vy;
 
-        // duvar
-        if(b.y<=BR||b.y>=H-BR) b.dy*=-1;
+      // wall bounce
+      if(ball.y < BALL_R || ball.y > H-BALL_R) ball.vy *= -1;
 
-        // paddle1
-        if(b.x<=PW+BR){
-          if(b.y>=state.p1.y&&b.y<=state.p1.y+PH) b.dx=Math.abs(b.dx);
-          else pointTo(2);
-        }
-        // paddle2
-        if(b.x>=W-PW-BR){
-          if(b.y>=state.p2.y&&b.y<=state.p2.y+PH) b.dx=-Math.abs(b.dx);
-          else pointTo(1);
-        }
-
-        stateRef.child('ball').set(b);
-      },1000/60);
-
-      function pointTo(p){
-        if(p===1) state.s1++; else state.s2++;
-        let updates={ s1:state.s1, s2:state.s2 };
-        // kazanma?
-        if(state.s1>=WIN||state.s2>=WIN){
-          updates.playing=false;
+      // paddle collision
+      // player
+      if(ball.x < PADDLE_W+BALL_R){
+        const rel = (ball.y - pY) / PADDLE_H - 0.5;
+        if(rel > -0.5 && rel < 0.5){
+          // reflect with angle
+          const angle = rel * Math.PI/3;
+          const speed = Math.hypot(ball.vx,ball.vy) * 1.05; 
+          ball.vx =  speed * Math.cos(angle);
+          ball.vy =  speed * Math.sin(angle);
         } else {
-          // topu resetle
-          updates.ball = {
-            x:W/2, y:H/2,
-            dx:300*DIFF*(Math.random()<0.5?1:-1),
-            dy:200*DIFF*(Math.random()<0.5?1:-1)
-          };
+          scoreA++;
+          document.getElementById('aiScore').textContent = scoreA;
+          reset();
         }
-        stateRef.update(updates);
       }
+      // AI
+      if(ball.x > W-PADDLE_W-BALL_R){
+        const rel = (ball.y - aiY) / PADDLE_H - 0.5;
+        if(rel > -0.5 && rel < 0.5){
+          const angle = Math.PI - rel * Math.PI/3;
+          const speed = Math.hypot(ball.vx,ball.vy) * 1.05;
+          ball.vx =  speed * Math.cos(angle);
+          ball.vy =  speed * Math.sin(angle);
+        } else {
+          scoreP++;
+          document.getElementById('pScore').textContent = scoreP;
+          reset();
+        }
+      }
+
+      updateAI();
+      requestAnimationFrame(loop);
     }
 
-    // 13) Kontrol modu otomatik
-    let keys={};
-    window.addEventListener('keydown',e=>keys[e.key]=true);
-    window.addEventListener('keyup',  e=>keys[e.key]=false);
-
-    // mouse vs touch
-    if('ontouchstart' in window){
-      controls.style.display='block';
-      let dragging=false;
-      controls.addEventListener('pointerdown', _=>dragging=true);
-      controls.addEventListener('pointerup',   _=>dragging=false);
-      controls.addEventListener('pointermove', e=>{
-        if(!dragging) return;
-        const r=controls.getBoundingClientRect();
-        sendPaddle((e.clientX-r.left)/r.width*(H-PH));
-      });
-    } else {
-      canvas.addEventListener('mousemove',e=>{
-        const r=canvas.getBoundingClientRect();
-        sendPaddle(e.clientY-r.top-PH/2);
-      });
+    function reset(){
+      ball.x = W/2; ball.y = H/2;
+      // random initial direction
+      const sign = Math.random()<0.5 ? 1:-1;
+      const ang  = (Math.random()*2-1)*(Math.PI/4);
+      const spd  = 5;
+      ball.vx = sign*spd*Math.cos(ang);
+      ball.vy =      spd*Math.sin(ang);
     }
 
-    // 14) Her frame client‑side render + paddle
-    (function clientLoop(){
-      // klavye
-      const dt=1/60;
-      if(state.playing){
-        if((role==='1')&&(keys['w']||keys['W'])) sendPaddle(state.p1.y-SPEED*dt);
-        if((role==='1')&&(keys['s']||keys['S'])) sendPaddle(state.p1.y+SPEED*dt);
-        if((role==='2')&&(keys['ArrowUp']))   sendPaddle(state.p2.y-SPEED*dt);
-        if((role==='2')&&(keys['ArrowDown'])) sendPaddle(state.p2.y+SPEED*dt);
-      }
-      render();
-      requestAnimationFrame(clientLoop);
-    })();
-
+    // start
+    reset();
+    draw();
+    loop();
   })();
   </script>
 </body>

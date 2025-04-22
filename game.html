@@ -2,244 +2,151 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Ping Pong Game</title>
+  <meta name="viewport" content="width=device-width,initial‑scale=1.0"/>
+  <title>Ping Pong</title>
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:#111; color:#fff; font-family:sans-serif; overflow:hidden; position:relative; }
-    body.theme-neon { background:#000; color:#0ff; }
-    canvas { display:block; margin:2rem auto; background:#222; }
-    #ui {
-      position:absolute; top:10px; left:50%; transform:translateX(-50%);
-      display:flex; gap:2rem; font-size:1.2rem;
-    }
-    #controls {
-      position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
-      display:none; width:80%; height:60px;
-      background:rgba(255,255,255,0.1); border-radius:30px;
-      touch-action:none;
-    }
-    #restartBtn {
-      position:absolute; top:10px; right:10px;
-      padding:0.5rem 1rem; background:#c00; border:none; color:#fff;
-      font-size:1rem; cursor:pointer; display:none;
-    }
-    #pauseOverlay {
-      position:fixed; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.7); display:none;
-      align-items:center; justify-content:center;
-      font-size:2rem; color:#fff; z-index:50;
-    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#111;color:#fff;font-family:sans-serif;overflow:hidden;}
+    canvas{display:block;margin:2rem auto;background:#222;border:2px solid #0ff;}
+    #scoreUI{position:absolute;top:1rem;left:50%;transform:translateX(-50%);font-size:2rem;}
   </style>
-</head>
-<body>
-  <canvas id="canvas" width="900" height="500"></canvas>
-  <div id="ui">
-    <div>Player 1: <span id="score1">0</span></div>
-    <div>Player 2: <span id="score2">0</span></div>
-  </div>
-  <div id="controls"></div>
-  <button id="restartBtn">Yeniden Başlat</button>
-  <div id="pauseOverlay">Rakip Ayrıldı<br>Bekleniyor…</div>
-
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+</head>
+<body>
+
+  <div id="scoreUI">0 – 0</div>
+  <canvas id="canvas" width="900" height="500"></canvas>
+
   <script>
   (async()=>{
+    // — 1) clientId (lobby ile aynı)
+    let cid = sessionStorage.getItem('clientId');
+    if(!cid) sessionStorage.setItem('clientId', cid = crypto.randomUUID());
 
-    // 0) clientId & theme
-    let clientId = localStorage.getItem('clientId');
-    if(!clientId){
-      clientId = crypto.randomUUID();
-      localStorage.setItem('clientId',clientId);
-    }
-    const params = new URLSearchParams(location.search);
-    const tableId = params.get('table');
-    const theme   = params.get('theme')||'dark';
-    if(!tableId){ alert('Eksik parametre!'); return; }
-    document.body.classList.add('theme-'+theme);
+    // — 2) URL’den table
+    const ps = new URLSearchParams(location.search);
+    const table = ps.get('table');
+    if(!table){ alert('Oda belirtilmemiş'); return; }
 
-    // 1) Firebase init
+    // — 3) Firebase init
     const cfg = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
       databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "masa-tenisi-v1",
-      storageBucket: "masa-tenisi-v1.appspot.com",
-      messagingSenderId: "186015084983",
-      appId: "1:186015084983:web:86f9d88e907423f5e33832"
     };
     firebase.initializeApp(cfg);
     const db = firebase.database();
 
-    // 2) Refs
-    const lobbyRef = db.ref(`lobby/tables/${tableId}`);
-    const stateRef = db.ref(`games/${tableId}/state`);
+    // — 4) Rol kontrolü
+    const slotSnap = await db.ref(`lobby/tables/${table}`).once('value');
+    const slot = slotSnap.val()||{};
+    let role = null;
+    if(slot.p1===cid) role='p1';
+    else if(slot.p2===cid) role='p2';
+    else { alert('Bu masada yeriniz yok'); return; }
 
-    // 3) Canvas + DOM
-    const canvas = document.getElementById('canvas');
-    const ctx    = canvas.getContext('2d');
-    const score1El   = document.getElementById('score1');
-    const score2El   = document.getElementById('score2');
-    const restartBtn = document.getElementById('restartBtn');
-    const controls   = document.getElementById('controls');
-    const pauseOverlay = document.getElementById('pauseOverlay');
-
-    // 4) Constants
-    const W = canvas.width, H = canvas.height;
-    const PADDLE_H = 100, PADDLE_W = 12, BALL_R = 10;
-    const WIN_SCORE = 7;
-
-    // 5) Local state
-    let role = null,      // "1" or "2"
-        isHost = false,
-        state = {
-          ball:{x:W/2,y:H/2,dx:5,dy:3},
-          p1:{y:(H-PADDLE_H)/2},
-          p2:{y:(H-PADDLE_H)/2},
-          score1:0, score2:0,
-          playing:true
-        },
-        pendingPaddleY = null,  // for throttled writes
-        ctrlMode='auto';
-
-    // 6) Determine role by reading lobby
-    const lSnap = await lobbyRef.once('value');
-    const lVal  = lSnap.val();
-    if (!lVal){ alert('Bu masada oyun bulunamadı.'); return; }
-    if (lVal.p1 === clientId)      { role='1'; isHost=true;  }
-    else if (lVal.p2 === clientId) { role='2';               }
-    else                            { alert('Bu masada yeriniz yok'); return; }
-
-    // 7) onDisconnect clean-up & pause if other leaves
-    lobbyRef.child(`p${role}`).onDisconnect().set(null);
-    lobbyRef.child(`ready${role}`).onDisconnect().set(false);
-    const other = role==='1'?'p2':'p1';
-    lobbyRef.child(other).on('value',snap=>{
-      if (!snap.exists()) stateRef.child('playing').set(false);
-    });
-
-    // 8) If host: initialize game state
-    if (isHost){
-      await stateRef.set({
-        ball: {x:W/2, y:H/2, dx:5, dy:3},
-        p1:   {y:(H-PADDLE_H)/2},
-        p2:   {y:(H-PADDLE_H)/2},
-        score1:0, score2:0, playing:true
-      });
-    }
-
-    // 9) Listen for state updates
-    stateRef.on('value', snap=>{
-      const v = snap.val();
-      if (v) state = v;
-      score1El.textContent = state.score1;
-      score2El.textContent = state.score2;
-      // pause overlay
-      if (!state.playing && state.score1<WIN_SCORE && state.score2<WIN_SCORE) {
-        pauseOverlay.style.display = 'flex';
-      } else {
-        pauseOverlay.style.display = 'none';
-      }
-    });
-
-    // 10) Control mode detection
-    if ('ontouchstart' in window) ctrlMode='touch';
-    else ctrlMode='mouse';
-    setupControls();
-
-    // 11) Throttled paddle writer @30Hz
-    setInterval(()=>{
-      if (pendingPaddleY !== null) {
-        stateRef.child(`p${role}/y`).set(pendingPaddleY);
-        pendingPaddleY = null;
-      }
-    }, 1000/30);
-
-    // 12) Draw loop
-    function draw(){
-      ctx.clearRect(0,0,W,H);
-      ctx.fillStyle='#fff';
-      ctx.fillRect(0, state.p1.y, PADDLE_W, PADDLE_H);
-      ctx.fillRect(W-PADDLE_W, state.p2.y, PADDLE_W, PADDLE_H);
-      ctx.beginPath();
-      ctx.arc(state.ball.x, state.ball.y, BALL_R,0,2*Math.PI);
-      ctx.fill();
-      if (state.playing) requestAnimationFrame(draw);
-    }
-    draw();
-
-    // 13) Host physics @60Hz
-    if (isHost){
-      setInterval(()=>{
-        if (!state.playing) return;
-        const b = state.ball;
-        b.x += b.dx; b.y += b.dy;
-        if (b.y < BALL_R || b.y > H-BALL_R) b.dy *= -1;
-        if (b.x <= PADDLE_W+BALL_R) {
-          if (b.y>=state.p1.y && b.y<=state.p1.y+PADDLE_H) b.dx = Math.abs(b.dx);
-          else pointTo(2);
-        }
-        if (b.x >= W-PADDLE_W-BALL_R) {
-          if (b.y>=state.p2.y && b.y<=state.p2.y+PADDLE_H) b.dx = -Math.abs(b.dx);
-          else pointTo(1);
-        }
-        stateRef.child('ball').set(b);
-      },1000/60);
-    }
-
-    function pointTo(player){
-      if (player===1) state.score1++; else state.score2++;
-      if (state.score1>=WIN_SCORE||state.score2>=WIN_SCORE){
-        state.playing=false;
-        stateRef.update({score1:state.score1,score2:state.score2,playing:false});
-        restartBtn.style.display='block';
-      } else {
-        const nv = {x:W/2,y:H/2,dx:5*(Math.random()<0.5?1:-1),dy:3};
-        stateRef.update({ ball:nv, score1:state.score1, score2:state.score2 });
-      }
-    }
-
-    // 14) Restart
-    restartBtn.onclick = ()=>{
-      if (!isHost) return;
-      stateRef.set({
-        ball: {x:W/2, y:H/2, dx:5, dy:3},
-        p1:   {y:(H-PADDLE_H)/2},
-        p2:   {y:(H-PADDLE_H)/2},
-        score1:0, score2:0, playing:true
-      });
-      restartBtn.style.display='none';
+    // — 5) Oyun state referansları
+    const stateRef = db.ref(`games/${table}/state`);
+    const W=900, H=500, PH=100, PW=12, BR=10, SPEED=5, FPS=60;
+    // Local cache
+    let state = {
+      ball:{x:W/2,y:H/2,dx:SPEED,dy:SPEED},
+      p1:{y:(H-PH)/2}, p2:{y:(H-PH)/2},
+      s1:0, s2:0, playing:true
     };
 
-    // 15) Controls
-    function setupControls(){
-      function queueY(y){
-        pendingPaddleY = Math.max(0, Math.min(H-PADDLE_H, y));
-      }
-      if (ctrlMode==='mouse'){
-        canvas.style.cursor='none';
-        canvas.onmousemove = e=>{
-          const r = canvas.getBoundingClientRect();
-          queueY(e.clientY - r.top - PADDLE_H/2);
-        };
-      } else {
-        controls.style.display='block';
-        let down=false;
-        controls.onpointerdown = ()=>down=true;
-        controls.onpointerup   = ()=>down=false;
-        controls.onpointermove = e=>{
-          if (!down) return;
-          const r = controls.getBoundingClientRect();
-          const pct = (e.clientX - r.left)/r.width;
-          queueY(pct*(H-PADDLE_H));
-        };
-      }
-      window.addEventListener('keydown', e=>{
-        const step = 20;
-        if (e.key==='ArrowUp'||e.key==='w') queueY(state[`p${role}`].y - step);
-        if (e.key==='ArrowDown'||e.key==='s') queueY(state[`p${role}`].y + step);
+    // — 6) Eğer host ve state yoksa initialize
+    const initSnap = await stateRef.once('value');
+    if(role==='p1' && !initSnap.exists()){
+      await stateRef.set(state);
+    }
+
+    // — 7) Dinle ve render
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const scoreUI= document.getElementById('scoreUI');
+
+    stateRef.on('value',snap=>{
+      const v=snap.val();
+      if(!v) return;
+      state = {
+        ball:v.ball, p1:v.p1, p2:v.p2,
+        s1:v.s1, s2:v.s2, playing:v.playing
+      };
+      scoreUI.textContent = `${state.s1} – ${state.s2}`;
+    });
+
+    function render(){
+      ctx.clearRect(0,0,W,H);
+      // paddles
+      ctx.fillStyle = '#0ff';
+      ctx.fillRect(0, state.p1.y, PW, PH);
+      ctx.fillStyle = '#f0f';
+      ctx.fillRect(W-PW, state.p2.y, PW, PH);
+      // ball
+      ctx.fillStyle='#ff0';
+      ctx.beginPath();
+      ctx.arc(state.ball.x, state.ball.y, BR, 0, 2*Math.PI);
+      ctx.fill();
+    }
+    requestAnimationFrame(function loop(){
+      render();
+      if(state.playing) requestAnimationFrame(loop);
+    });
+
+    // — 8) Host fizik döngüsü
+    if(role==='p1'){
+      setInterval(()=>{
+        if(!state.playing) return;
+        let b = {...state.ball};
+        b.x += b.dx; b.y += b.dy;
+        // duvar
+        if(b.y<BR||b.y>H-BR) b.dy*=-1;
+        // sol
+        if(b.x< PW+BR){
+          if(b.y<state.p1.y||b.y>state.p1.y+PH) state.s2++;
+          else b.dx = Math.abs(b.dx);
+          b.x = W/2; b.y = H/2;
+        }
+        // sağ
+        if(b.x>W-PW-BR){
+          if(b.y<state.p2.y||b.y>state.p2.y+PH) state.s1++;
+          else b.dx = -Math.abs(b.dx);
+          b.x = W/2; b.y = H/2;
+        }
+        // skor kontrol
+        if(state.s1>=7||state.s2>=7) state.playing=false;
+        // DB’ye yaz
+        stateRef.set({
+          ball:b,
+          p1:state.p1, p2:state.p2,
+          s1:state.s1, s2:state.s2,
+          playing:state.playing
+        });
+      },1000/FPS);
+    }
+
+    // — 9) Kontroller
+    function sendY(y){
+      const yy = Math.max(0, Math.min(H-PH, y));
+      stateRef.child(role).child('y').set(yy);
+    }
+
+    // klavye
+    window.addEventListener('keydown',e=>{
+      if(role!=='p1') return;
+      if(e.key==='w'||e.key==='ArrowUp')   sendY(state.p1.y-20);
+      if(e.key==='s'||e.key==='ArrowDown') sendY(state.p1.y+20);
+    });
+
+    // fare
+    if(role==='p2'){
+      canvas.addEventListener('mousemove', e=>{
+        const r=canvas.getBoundingClientRect();
+        sendY(e.clientY-r.top-PH/2);
       });
     }
 

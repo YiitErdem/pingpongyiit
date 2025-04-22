@@ -2,258 +2,234 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong – TOFAŞ CAE Edition</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ping Pong with Buffs</title>
   <style>
-    /* Reset & globals */
-    * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
-    body {
-      background: url('background.png') center/cover no-repeat;
-      font-family: Arial, sans-serif;
-      overflow: hidden;
-      position: relative;
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#111;color:#fff;font-family:sans-serif;overflow:hidden;position:relative;}
+    body.theme-neon{background:#000;color:#0ff;}
+    #canvas{display:block;margin:0 auto;background:#222;}
+    #ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2rem;font-size:1.2rem;z-index:2;}
+    #controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:none;
+      width:80%;height:60px;background:rgba(255,255,255,0.1);border-radius:30px;touch-action:none;z-index:2;}
+    @media(max-width:600px){
+      #controls{width:60px;height:80%;left:auto;right:10px;bottom:auto;top:50%;transform:translateY(-50%);}
     }
-    canvas { display:block; margin: 0 auto; background: rgba(0,0,0,0.4); }
-
-    /* UI bar */
-    #ui {
-      position: absolute; top:0; left:50%; transform:translateX(-50%);
-      width:1100px; height:50px; display:flex;
-      align-items:center; justify-content: space-between;
-      padding:0 1rem; background:rgba(0,0,0,0.7); color:#0ff;
-      font-size:1.2rem; z-index:10;
-    }
-    #ui div { display:flex; align-items:center; gap:.5rem; }
-    #timer { font-family: monospace; }
-
-    /* Pause & restart */
-    #pauseBtn, #restartBtn {
-      background: #0ff; color:#000; border:none;
-      padding:.3rem .6rem; cursor:pointer; font-size:1rem;
-      border-radius:4px;
-    }
-    #restartBtn { display:none; }
-
-    /* Touch controls */
-    #touchControls {
-      display:none;
-      position:absolute; bottom:0; left:50%; transform:translateX(-50%);
-      width:1100px; height:80px; background:rgba(255,255,255,0.2);
-      border-radius:40px; touch-action:none; z-index:10;
-    }
-
-    /* Dark overlay for screen-dark buff */
-    #darkOverlay {
-      position:absolute; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.6); pointer-events:none; opacity:0;
-      transition:opacity .3s;
-      z-index:5;
-    }
-
-    /* End‐of‐game modal */
-    #overlay {
-      position:absolute; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.8); display:flex;
-      align-items:center; justify-content:center;
-      color:#0ff; font-size:2rem; flex-direction:column;
-      visibility:hidden; z-index:20;
-    }
+    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;opacity:0;pointer-events:none;transition:opacity .3s;}
+    #restartBtn{position:absolute;top:10px;right:10px;padding:.5rem 1rem;background:#c00;border:none;color:#fff;cursor:pointer;z-index:2;}
   </style>
 </head>
 <body>
 
-  <div id="ui">
-    <div>Player: <span id="score1">0</span></div>
-    <div id="timer">03:00</div>
-    <div>CPU: <span id="score2">0</span></div>
-    <button id="pauseBtn">⏸️</button>
-    <button id="restartBtn">↻ Yeniden</button>
-  </div>
+  <canvas id="canvas" width="900" height="500"></canvas>
+  <div id="ui"><div>Score: <span id="score">0</span></div></div>
+  <div id="controls"></div>
+  <div id="overlay"></div>
+  <button id="restartBtn" style="display:none;">Restart</button>
 
-  <canvas id="gameCanvas" width="1100" height="600"></canvas>
-  <div id="darkOverlay"></div>
-  <div id="touchControls"></div>
+  <script>
+  (()=>{
+    // --- setup ---
+    const params=new URLSearchParams(location.search);
+    const theme=params.get('theme')||'dark';
+    document.body.classList.add('theme-'+theme);
 
-  <div id="overlay">
-    <p id="endText"></p>
-    <button id="restartBtn2">Yeniden Başlat</button>
-  </div>
+    const canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height;
+    const PADDLE_W=12, PADDLE_H0=100, BALL_R=10;
+    let PADDLE_H=PADDLE_H0;
 
-<script>
-(() => {
-  const canvas = document.getElementById('gameCanvas');
-  const ctx    = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
+    const scoreEl=document.getElementById('score');
+    const controls=document.getElementById('controls');
+    const overlay=document.getElementById('overlay');
+    const restartBtn=document.getElementById('restartBtn');
 
-  // UI
-  const score1El = document.getElementById('score1');
-  const score2El = document.getElementById('score2');
-  const timerEl  = document.getElementById('timer');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const restartBtn = document.getElementById('restartBtn');
-  const restartBtn2 = document.getElementById('restartBtn2');
-  const overlay = document.getElementById('overlay');
-  const endText = document.getElementById('endText');
-  const darkOv  = document.getElementById('darkOverlay');
-  const touchControls = document.getElementById('touchControls');
+    // game state
+    let score=0, playing=false;
+    let paddleY=(H-PADDLE_H)/2;
+    let balls=[{x:W/2,y:H/2,dx:5,dy:3}];
+    let obstacles=[]; // {x,y,w,h,ttl}
 
-  // Game constants
-  const P_H0 = 100, P_W=12, R0=12;
-  const BUFF_DURATION=6000, BUFF_SPAWN=15000;
-  const GAME_TIME = 180; // seconds
+    // buffs on field
+    let buffs=[]; // {x,y,type}
+    const BUFF_R=12;
+    const BUFF_TYPES=[
+      {type:'double', color:'#0f0'},
+      {type:'grow',   color:'#ff0'},
+      {type:'dark',   color:'#800'},
+      {type:'speed',  color:'#0ff'},
+      {type:'block',  color:'#888'},
+    ];
+    // active effects
+    let effects={double:0,grow:0,dark:0};
 
-  // State
-  let state = {
-    balls: [],
-    p1Y: (H-P_H0)/2,
-    p2Y: (H-P_H0)/2,
-    score1: 0, score2: 0,
-    time: GAME_TIME,
-    buffs: [],
-    effects: []
-  };
-  let last = performance.now();
-  let paused = false;
+    // controls
+    let ctrlMode=('ontouchstart' in window)?'touch':'mouse';
+    setupControls();
 
-  // --- initialize
-  function resetBall(){
-    state.balls = [{
-      x: W/2, y: H/2,
-      dx: 6*(Math.random()<.5?1:-1),
-      dy: 4*(Math.random()<.5?1:-1)
-    }];
-  }
-  resetBall();
-  // spawn buffs
-  function spawnBuff(){
-    const types = ['double','grow','shrink','fast','dark'];
-    const t = types[Math.floor(Math.random()*types.length)];
-    state.buffs.push({
-      type: t,
-      x: 100 + Math.random()*(W-200),
-      y:  50 + Math.random()*(H-100),
-      t0: performance.now()
-    });
-  }
-  setInterval(spawnBuff, BUFF_SPAWN);
-
-  // Controls
-  let ctrlMode = 'mouse';
-  if('ontouchstart' in window){
-    ctrlMode='touch';
-    touchControls.style.display='block';
-  }
-  let dragging=false;
-  touchControls.addEventListener('pointerdown',e=>dragging=true);
-  touchControls.addEventListener('pointerup',e=>dragging=false);
-  touchControls.addEventListener('pointermove',e=>{
-    if(!dragging) return;
-    const r = touchControls.getBoundingClientRect();
-    const pct = (e.clientX - r.left)/r.width;
-    state.p1Y = pct*(H-P_H0);
-  });
-  canvas.addEventListener('mousemove',e=>{
-    if(ctrlMode==='mouse'){
-      const r=canvas.getBoundingClientRect();
-      state.p1Y = e.clientY - r.top - P_H0/2;
+    function setupControls(){
+      if(ctrlMode==='mouse'){
+        canvas.style.cursor='none';
+        canvas.addEventListener('mousemove',e=>{
+          const r=canvas.getBoundingClientRect();
+          paddleY=Math.max(0,Math.min(H-PADDLE_H, e.clientY-r.top-PADDLE_H/2));
+        });
+      } else {
+        controls.style.display='block';
+        let drag=false;
+        controls.addEventListener('pointerdown',()=>drag=true);
+        controls.addEventListener('pointerup',()=>drag=false);
+        controls.addEventListener('pointermove',e=>{
+          if(!drag)return;
+          const r=controls.getBoundingClientRect();
+          const pct=(window.matchMedia('(max-width:600px)').matches)
+            ?(e.clientY-r.top)/r.height
+            :(e.clientX-r.left)/r.width;
+          paddleY=Math.max(0,Math.min(H-PADDLE_H,pct*(H-PADDLE_H)));
+        });
+      }
     }
-  });
 
-  pauseBtn.onclick = ()=> paused = !paused;
-  restartBtn.onclick = restart;
-  restartBtn2.onclick = restart;
+    // spawn buffs & obstacles
+    setInterval(()=>spawnBuff(), random(8000,15000));
+    setInterval(()=>spawnObstacle(), random(10000,20000));
 
-  // Game loop
-  function loop(now){
-    const dt = (now-last)/1000;
-    last = now;
-    if(!paused){
-      update(dt);
+    function spawnBuff(){
+      const b=BUFF_TYPES[random(0,BUFF_TYPES.length-1)];
+      buffs.push({x:random(BUFF_R,W-BUFF_R), y:random(BUFF_R,H-BUFF_R), type:b.type, color:b.color});
+    }
+    function spawnObstacle(){
+      obstacles.push({x:random(W/3,2*W/3), y:random(H/4,3*H/4), w:30, h:100, ttl:10000});
+    }
+
+    // main loop
+    let last=0;
+    function loop(ts){
+      if(!playing)return;
+      const dt=(ts-last)/1000; last=ts;
+
+      // move balls
+      balls.forEach(b=>{
+        b.x+=b.dx; b.y+=b.dy;
+        // walls
+        if(b.y< BALL_R||b.y>H-BALL_R) b.dy*=-1;
+        // paddle
+        if(b.x<=PADDLE_W+BALL_R){
+          if(b.y>=paddleY&&b.y<=paddleY+PADDLE_H) b.dx*=-1;
+          else endRound();
+        }
+        // obstacles
+        obstacles.forEach(o=>{
+          if(b.x>o.x&&b.x<o.x+o.w&&b.y>o.y&&b.y<o.y+o.h){
+            // simple reflect
+            b.dx*=-1; b.dy*=-1;
+          }
+        });
+      });
+
+      // buff pickup
+      buffs=buffs.filter(buff=>{
+        let hit=false;
+        balls.forEach(b=>{
+          const dx=b.x-buff.x, dy=b.y-buff.y;
+          if(Math.hypot(dx,dy)<BALL_R+BUFF_R){
+            apply(buff.type);
+            hit=true;
+          }
+        });
+        return !hit;
+      });
+
+      // update effects
+      Object.keys(effects).forEach(k=>{
+        if(effects[k]>0){
+          effects[k]-=dt*1000;
+          if(effects[k]<=0) removeEffect(k);
+        }
+      });
+      // obstacles ttl
+      obstacles=obstacles.filter(o=>(o.ttl-=dt*1000)>0);
+
+      // draw
       render();
+      requestAnimationFrame(loop);
     }
-    requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
 
-  // Update
-  function update(dt){
-    // timer
-    state.time = Math.max(0,state.time - dt);
-    const m = String(Math.floor(state.time/60)).padStart(2,'0'),
-          s = String(Math.floor(state.time%60)).padStart(2,'0');
-    timerEl.textContent = `${m}:${s}`;
-    if(state.time===0){ endGame(); paused=true; }
+    function render(){
+      ctx.clearRect(0,0,W,H);
+      // paddle
+      ctx.fillStyle='#0ff';
+      ctx.fillRect(0,paddleY,PADDLE_W,PADDLE_H);
+      // balls
+      ctx.fillStyle='#ff0';
+      balls.forEach(b=>{ctx.beginPath(); ctx.arc(b.x,b.y,BALL_R,0,2*Math.PI); ctx.fill();});
+      // buffs
+      buffs.forEach(b=>{
+        ctx.fillStyle=b.color;
+        ctx.beginPath(); ctx.arc(b.x,b.y,BUFF_R,0,2*Math.PI); ctx.fill();
+      });
+      // obstacles
+      ctx.fillStyle='#888';
+      obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
+      // screen dark
+      if(effects.dark>0) overlay.style.opacity=0.6; else overlay.style.opacity=0;
+    }
 
-    // CPU paddle
-    const ball = state.balls[0];
-    const diff = ball.y - (state.p2Y+P_H0/2);
-    state.p2Y += diff*0.10; // reaction speed
-    state.p2Y = Math.max(0,Math.min(H-P_H0, state.p2Y));
-
-    // balls
-    state.balls.forEach(b=>{
-      b.x += b.dx; b.y += b.dy;
-      // walls
-      if(b.y< R0||b.y>H-R0) b.dy*=-1;
-      // paddles
-      if(b.x< P_W+R0){
-        if(b.y>state.p1Y && b.y<state.p1Y+P_H0) b.dx*=-1;
-        else { state.score2++; resetBall(); }
+    function apply(type){
+      switch(type){
+        case 'double':
+          if(!effects.double){
+            const clones=balls.map(b=>({...b,dx:-b.dx,dy:-b.dy}));
+            balls.push(...clones);
+          }
+          effects.double=10000; break;
+        case 'grow':
+          if(!effects.grow){ PADDLE_H*=1.5; }
+          effects.grow=8000; break;
+        case 'dark':
+          effects.dark=5000; break;
+        case 'speed':
+          balls.forEach(b=>{b.dx*=1.2; b.dy*=1.2;});
+          break;
+        case 'block':
+          // nothing extra
+          break;
       }
-      if(b.x>W-P_W-R0){
-        if(b.y>state.p2Y && b.y<state.p2Y+P_H0) b.dx*=-1;
-        else { state.score1++; resetBall(); }
-      }
-    });
-    score1El.textContent = state.score1;
-    score2El.textContent = state.score2;
+    }
+    function removeEffect(k){
+      if(k==='double'){ balls=balls.slice(0,1); }
+      if(k==='grow'){ PADDLE_H=PADDLE_H0; }
+      if(k==='dark'){ overlay.style.opacity=0; }
+      effects[k]=0;
+    }
 
-    // buffs timeout
-    const nowT = performance.now();
-    state.buffs = state.buffs.filter(b=> nowT - b.t0 < BUFF_DURATION);
-  }
+    function endRound(){
+      score++; scoreEl.textContent=score;
+      reset();
+    }
 
-  // Render
-  function render(){
-    ctx.clearRect(0,0,W,H);
-    // paddles
-    ctx.fillStyle='#0ff';
-    ctx.fillRect(0, state.p1Y, P_W, P_H0);
-    ctx.fillRect(W-P_W, state.p2Y, P_W, P_H0);
-    // balls
-    ctx.fillStyle='#ff0';
-    state.balls.forEach(b=>{
-      ctx.beginPath();
-      ctx.arc(b.x,b.y,R0,0,2*Math.PI);
-      ctx.fill();
-    });
-    // buffs
-    state.buffs.forEach(b=>{
-      const ico = {double:'#f0f',grow:'#0f0',shrink:'#f00',fast:'#ff0',dark:'#00f'}[b.type];
-      ctx.fillStyle = ico;
-      ctx.fillRect(b.x-8,b.y-8,16,16);
-    });
-    // dark overlay
-    darkOv.style.opacity = state.effects.some(e=>e.type==='dark')? '1':'0';
-    // clean expired effects
-    const now = performance.now();
-    state.effects = state.effects.filter(e=> now<e.exp);
-  }
+    function reset(){
+      balls=[{x:W/2,y:H/2,dx:5,dy:3}];
+      paddleY=(H-PADDLE_H0)/2; PADDLE_H=PADDLE_H0;
+      buffs=[]; obstacles=[];
+    }
 
-  // End game
-  function endGame(){
-    endText.textContent = state.score1>state.score2? 'KAZANDIN!' : 'CPU Kazandı';
-    overlay.style.visibility='visible';
-    restartBtn.style.display='inline-block';
-  }
-  function restart(){
-    overlay.style.visibility='hidden';
-    paused = false;
-    state.score1=0; state.score2=0;
-    state.time = GAME_TIME;
-    resetBall();
-  }
-})();
-</script>
+    function start(){
+      reset(); playing=true; last=performance.now();
+      requestAnimationFrame(loop);
+    }
+
+    restartBtn.addEventListener('click',()=>{
+      score=0; scoreEl.textContent=0;
+      restartBtn.style.display='none';
+      start();
+    });
+
+    // helpers
+    function random(a,b){return Math.floor(Math.random()*(b-a)+a);}
+    // start now
+    start();
+  })();
+  </script>
 </body>
 </html>

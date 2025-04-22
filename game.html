@@ -3,265 +3,257 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong + Buffs & Obstacles</title>
+  <title>Ping Pong – TOFAŞ CAE Edition</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:sans-serif;overflow:hidden;position:relative;}
-    #canvas{display:block;margin:0 auto;background:#222 url(https://i.imgur.com/2yXUbhL.png) no-repeat center;/*isteğe göre kendi background PNG’niz*/ background-size:cover;cursor:none;}
-    #watermark {
-      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);
-      font-size:8rem;color:rgba(255,255,255,0.05);pointer-events:none;user-select:none;
-      white-space:nowrap;z-index:0;
+    /* Reset & globals */
+    * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+    body {
+      background: url('background.png') center/cover no-repeat;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+      position: relative;
     }
-    #ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2rem;font-size:1.2rem;z-index:2;}
-    #timer{position:absolute;top:10px;right:10px;font-size:1.2rem;z-index:2;}
-    #buffsUI{position:absolute;top:50px;right:10px;display:flex;flex-direction:column;gap:0.5rem;z-index:2;font-size:0.9rem;}
-    .buffItem{display:flex;align-items:center;gap:0.3rem;}
-    .buffDot{width:12px;height:12px;border-radius:50%;background:#fff;}
-    #controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:none;
-      width:80%;height:60px;background:rgba(255,255,255,0.1);border-radius:30px;touch-action:none;z-index:2;}
-    #startOverlay {
-      position:fixed;top:0;left:0;width:100%;height:100%;
-      background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:5;
+    canvas { display:block; margin: 0 auto; background: rgba(0,0,0,0.4); }
+
+    /* UI bar */
+    #ui {
+      position: absolute; top:0; left:50%; transform:translateX(-50%);
+      width:1100px; height:50px; display:flex;
+      align-items:center; justify-content: space-between;
+      padding:0 1rem; background:rgba(0,0,0,0.7); color:#0ff;
+      font-size:1.2rem; z-index:10;
     }
-    #startOverlay button {
-      padding:1rem 2rem;font-size:1.5rem;border:none;border-radius:8px;
-      background:#0ff;color:#000;cursor:pointer;
+    #ui div { display:flex; align-items:center; gap:.5rem; }
+    #timer { font-family: monospace; }
+
+    /* Pause & restart */
+    #pauseBtn, #restartBtn {
+      background: #0ff; color:#000; border:none;
+      padding:.3rem .6rem; cursor:pointer; font-size:1rem;
+      border-radius:4px;
+    }
+    #restartBtn { display:none; }
+
+    /* Touch controls */
+    #touchControls {
+      display:none;
+      position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+      width:1100px; height:80px; background:rgba(255,255,255,0.2);
+      border-radius:40px; touch-action:none; z-index:10;
+    }
+
+    /* Dark overlay for screen-dark buff */
+    #darkOverlay {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.6); pointer-events:none; opacity:0;
+      transition:opacity .3s;
+      z-index:5;
+    }
+
+    /* End‐of‐game modal */
+    #overlay {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.8); display:flex;
+      align-items:center; justify-content:center;
+      color:#0ff; font-size:2rem; flex-direction:column;
+      visibility:hidden; z-index:20;
     }
   </style>
 </head>
 <body>
-  <div id="watermark">TOFAS CAE</div>
-  <canvas id="canvas" width="900" height="500"></canvas>
+
   <div id="ui">
-    <div><strong id="score1">0</strong> – Player</div>
-    <div><strong id="score2">0</strong> – CPU</div>
+    <div>Player: <span id="score1">0</span></div>
+    <div id="timer">03:00</div>
+    <div>CPU: <span id="score2">0</span></div>
+    <button id="pauseBtn">⏸️</button>
+    <button id="restartBtn">↻ Yeniden</button>
   </div>
-  <div id="timer">03:00</div>
-  <div id="buffsUI"></div>
-  <div id="controls"></div>
-  <div id="startOverlay"><button id="playBtn">Başlat</button></div>
 
-  <script>
-  (()=>{
-    const c=document.getElementById('canvas'),ctx=c.getContext('2d'),
-          W=c.width,H=c.height;
-    const score1El=document.getElementById('score1'),
-          score2El=document.getElementById('score2'),
-          timerEl=document.getElementById('timer'),
-          buffsUI=document.getElementById('buffsUI'),
-          controls=document.getElementById('controls'),
-          startOverlay=document.getElementById('startOverlay'),
-          playBtn=document.getElementById('playBtn');
+  <canvas id="gameCanvas" width="1100" height="600"></canvas>
+  <div id="darkOverlay"></div>
+  <div id="touchControls"></div>
 
-    // Sabitler
-    const P_H=100,P_W=12,B_R=10;
-    const GAME_TIME=180; // saniye
-    const BUFF_TYPES=[
-      {type:'grow',color:'#0ff',duration:8},
-      {type:'shrink',color:'#f00',duration:8},
-      {type:'double',color:'#ff0',duration:12},
-      {type:'dark',color:'#a0f',duration:6},
-      {type:'speed',color:'#0f0',duration:6}
-    ];
-    const BUFF_SPAWN_INT=15,OBST_SPAWN_INT=20;
+  <div id="overlay">
+    <p id="endText"></p>
+    <button id="restartBtn2">Yeniden Başlat</button>
+  </div>
 
-    // State
-    let score1=0,score2=0,timeLeft=GAME_TIME;
-    let gameIv,timerIv,buffIv,obsIv;
-    let state={ballList:[],p1:{y:(H-P_H)/2,h:P_H},p2:{y:(H-P_H)/2,h:P_H},
-               dark:0,buffsActive:{},buffsOnField:[],obstacles:[]};
+<script>
+(() => {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
 
-    // Yardımcılar
-    const rand=(a,b)=>a+Math.random()*(b-a);
-    function resetBall(){return{x:W/2,y:H/2,dx:(Math.random()<.5?-6:6),dy:(Math.random()<.5?-4:4)}}
+  // UI
+  const score1El = document.getElementById('score1');
+  const score2El = document.getElementById('score2');
+  const timerEl  = document.getElementById('timer');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const restartBtn2 = document.getElementById('restartBtn2');
+  const overlay = document.getElementById('overlay');
+  const endText = document.getElementById('endText');
+  const darkOv  = document.getElementById('darkOverlay');
+  const touchControls = document.getElementById('touchControls');
 
-    // Başlat
-    playBtn.onclick=()=>{
-      clearInterval(gameIv);clearInterval(timerIv);
-      clearInterval(buffIv);clearInterval(obsIv);
-      score1=score2=0;timeLeft=GAME_TIME;
-      score1El.textContent=0;score2El.textContent=0;
-      timerEl.textContent='03:00';
-      state={ballList:[resetBall()],p1:{y:(H-P_H)/2,h:P_H},p2:{y:(H-P_H)/2,h:P_H},
-             dark:0,buffsActive:{},buffsOnField:[],obstacles:[]};
-      buffsUI.innerHTML='';
-      startOverlay.style.display='none';
-      gameIv=setInterval(loop,1000/60);
-      timerIv=setInterval(tick,1000);
-      buffIv = setInterval(spawnBuff,BUFF_SPAWN_INT*1000);
-      obsIv  = setInterval(spawnObs,OBST_SPAWN_INT*1000);
-    };
+  // Game constants
+  const P_H0 = 100, P_W=12, R0=12;
+  const BUFF_DURATION=6000, BUFF_SPAWN=15000;
+  const GAME_TIME = 180; // seconds
 
-    // Sayaç
-    function tick(){
-      timeLeft--;
-      let m=String(Math.floor(timeLeft/60)).padStart(2,'0'),
-          s=String(timeLeft%60).padStart(2,'0');
-      timerEl.textContent=`${m}:${s}`;
-      if(timeLeft<=0) endMatch();
+  // State
+  let state = {
+    balls: [],
+    p1Y: (H-P_H0)/2,
+    p2Y: (H-P_H0)/2,
+    score1: 0, score2: 0,
+    time: GAME_TIME,
+    buffs: [],
+    effects: []
+  };
+  let last = performance.now();
+  let paused = false;
+
+  // --- initialize
+  function resetBall(){
+    state.balls = [{
+      x: W/2, y: H/2,
+      dx: 6*(Math.random()<.5?1:-1),
+      dy: 4*(Math.random()<.5?1:-1)
+    }];
+  }
+  resetBall();
+  // spawn buffs
+  function spawnBuff(){
+    const types = ['double','grow','shrink','fast','dark'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    state.buffs.push({
+      type: t,
+      x: 100 + Math.random()*(W-200),
+      y:  50 + Math.random()*(H-100),
+      t0: performance.now()
+    });
+  }
+  setInterval(spawnBuff, BUFF_SPAWN);
+
+  // Controls
+  let ctrlMode = 'mouse';
+  if('ontouchstart' in window){
+    ctrlMode='touch';
+    touchControls.style.display='block';
+  }
+  let dragging=false;
+  touchControls.addEventListener('pointerdown',e=>dragging=true);
+  touchControls.addEventListener('pointerup',e=>dragging=false);
+  touchControls.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    const r = touchControls.getBoundingClientRect();
+    const pct = (e.clientX - r.left)/r.width;
+    state.p1Y = pct*(H-P_H0);
+  });
+  canvas.addEventListener('mousemove',e=>{
+    if(ctrlMode==='mouse'){
+      const r=canvas.getBoundingClientRect();
+      state.p1Y = e.clientY - r.top - P_H0/2;
     }
+  });
 
-    // Buff spawn
-    function spawnBuff(){
-      const b=BUFF_TYPES[Math.floor(Math.random()*BUFF_TYPES.length)];
-      state.buffsOnField.push({x:rand(50,W-50),y:rand(50,H-50),type:b.type,color:b.color});
+  pauseBtn.onclick = ()=> paused = !paused;
+  restartBtn.onclick = restart;
+  restartBtn2.onclick = restart;
+
+  // Game loop
+  function loop(now){
+    const dt = (now-last)/1000;
+    last = now;
+    if(!paused){
+      update(dt);
+      render();
     }
-    // Obstacle spawn
-    function spawnObs(){
-      state.obstacles.push({
-        x:rand(100,W-150),y:rand(50,H-100),
-        w:rand(30,80),h:rand(10,30),color:'#888'
-      });
-      if(state.obstacles.length>5) state.obstacles.shift();
-    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
 
-    // Aktif buff gösterimi
-    function updateBuffUI(){
-      buffsUI.innerHTML='';
-      for(let [t,rem] of Object.entries(state.buffsActive)){
-        const def=BUFF_TYPES.find(x=>x.type===t);
-        if(rem>0){
-          const d=document.createElement('div');
-          d.className='buffItem';
-          d.innerHTML=`<span class="buffDot" style="background:${def.color}"></span>
-                       ${t}: ${Math.ceil(rem)}s`;
-          buffsUI.append(d);
-        }
-      }
-    }
+  // Update
+  function update(dt){
+    // timer
+    state.time = Math.max(0,state.time - dt);
+    const m = String(Math.floor(state.time/60)).padStart(2,'0'),
+          s = String(Math.floor(state.time%60)).padStart(2,'0');
+    timerEl.textContent = `${m}:${s}`;
+    if(state.time===0){ endGame(); paused=true; }
 
-    // Oyun döngüsü
-    function loop(){
-      // CPU paddle
-      const b0=state.ballList[0];
-      state.p2.y += (b0.y-(state.p2.y+state.p2.h/2))*0.04;
-      state.p2.y=Math.max(0,Math.min(H-state.p2.h,state.p2.y));
+    // CPU paddle
+    const ball = state.balls[0];
+    const diff = ball.y - (state.p2Y+P_H0/2);
+    state.p2Y += diff*0.10; // reaction speed
+    state.p2Y = Math.max(0,Math.min(H-P_H0, state.p2Y));
 
-      // Toplar
-      state.ballList.forEach(b=>{
-        b.x+=b.dx; b.y+=b.dy;
-        if(b.y<=B_R||b.y>=H-B_R) b.dy*=-1;
-
-        // Paddle çarpışma
-        if(b.x<=P_W+B_R){
-          if(b.y>=state.p1.y&&b.y<=state.p1.y+state.p1.h) b.dx*=-1;
-          else score2++;
-        }
-        if(b.x>=W-P_W-B_R){
-          if(b.y>=state.p2.y&&b.y<=state.p2.y+state.p2.h) b.dx*=-1;
-          else score1++;
-        }
-
-        // Obstacle çarpışma
-        state.obstacles.forEach(o=>{
-          if(b.x>=o.x&&b.x<=o.x+o.w&&
-             b.y>=o.y&&b.y<=o.y+o.h){
-            // basit bounce
-            b.dx*=-1; b.dy*=-1;
-          }
-        });
-      });
-      // Skor güncelle
-      score1El.textContent=score1;
-      score2El.textContent=score2;
-      if(score1>=10||score2>=10) return endMatch();
-
-      // Buff collision
-      state.buffsOnField=state.buffsOnField.filter(buff=>{
-        return !state.ballList.some(b=>{
-          const dx=b.x-buff.x,dy=b.y-buff.y;
-          if(Math.hypot(dx,dy)<B_R+10){
-            activate(buff.type);
-            return true;
-          }
-        });
-      });
-
-      // Aktif buff’ları tickle
-      for(let t in state.buffsActive){
-        state.buffsActive[t]-=1/60;
-        if(state.buffsActive[t]<=0){
-          delete state.buffsActive[t];
-          if(t==='grow'||t==='shrink') state.p1.h=P_H;
-          if(t==='double') state.ballList.splice(1);
-          if(t==='dark') state.dark=0;
-          if(t==='speed') {/* otomatik geri al deliğüçük */}
-        }
-      }
-      updateBuffUI();
-
-      // Çizim
-      ctx.clearRect(0,0,W,H);
-      // obstacles
-      state.obstacles.forEach(o=>{
-        ctx.fillStyle=o.color;
-        ctx.fillRect(o.x,o.y,o.w,o.h);
-      });
+    // balls
+    state.balls.forEach(b=>{
+      b.x += b.dx; b.y += b.dy;
+      // walls
+      if(b.y< R0||b.y>H-R0) b.dy*=-1;
       // paddles
-      ctx.fillStyle='#0ff';ctx.fillRect(0,state.p1.y,P_W,state.p1.h);
-      ctx.fillStyle='#f0f';ctx.fillRect(W-P_W,state.p2.y,P_W,P_H);
-      // balls
-      ctx.fillStyle='#ff0';
-      state.ballList.forEach(b=>{
-        ctx.beginPath();ctx.arc(b.x,b.y,B_R,0,2*Math.PI);ctx.fill();
-      });
-      // buffs
-      state.buffsOnField.forEach(b=>{
-        ctx.fillStyle=b.color;
-        ctx.fillRect(b.x-8,b.y-8,16,16);
-      });
-      // dark overlay
-      if(state.dark>0){
-        ctx.fillStyle=`rgba(0,0,0,${state.dark})`;
-        ctx.fillRect(0,0,W,H);
+      if(b.x< P_W+R0){
+        if(b.y>state.p1Y && b.y<state.p1Y+P_H0) b.dx*=-1;
+        else { state.score2++; resetBall(); }
       }
-    }
-
-    // Buff aktive et
-    function activate(type){
-      const d=BUFF_TYPES.find(b=>b.type===type);
-      state.buffsActive[type]=d.duration;
-      if(type==='grow')    state.p1.h=P_H*1.5;
-      if(type==='shrink')  state.p1.h=P_H*0.5;
-      if(type==='double'){
-        const b2=resetBall();b2.dx*=-1;state.ballList.push(b2);
+      if(b.x>W-P_W-R0){
+        if(b.y>state.p2Y && b.y<state.p2Y+P_H0) b.dx*=-1;
+        else { state.score1++; resetBall(); }
       }
-      if(type==='dark')    state.dark=0.6;
-      if(type==='speed'){
-        state.ballList.forEach(b=>{b.dx*=1.5;b.dy*=1.5;});
-      }
-    }
+    });
+    score1El.textContent = state.score1;
+    score2El.textContent = state.score2;
 
-    // Paddle hareket
-    function moveP1(y){
-      state.p1.y=Math.max(0,Math.min(H-state.p1.h,y));
-    }
-    if('ontouchstart' in window){
-      controls.style.display='block';
-      let d=false;
-      controls.onpointerdown=()=>d=true;
-      controls.onpointerup=()=>d=false;
-      controls.onpointermove=e=>{
-        if(!d) return;
-        const pct=(e.clientX-controls.getBoundingClientRect().left)/controls.offsetWidth;
-        moveP1(pct*(H-state.p1.h));
-      };
-    } else {
-      c.onmousemove=e=>{
-        moveP1(e.clientY-c.getBoundingClientRect().top-state.p1.h/2);
-      };
-    }
+    // buffs timeout
+    const nowT = performance.now();
+    state.buffs = state.buffs.filter(b=> nowT - b.t0 < BUFF_DURATION);
+  }
 
-    // Maçı bitir
-    function endMatch(){
-      clearInterval(gameIv);clearInterval(timerIv);
-      clearInterval(buffIv);clearInterval(obsIv);
-      const w=score1>score2?'Player':'CPU';
-      alert(`${w} kazandı!\nSen: ${score1} – CPU: ${score2}`);
-      location.reload();
-    }
-  })();
-  </script>
+  // Render
+  function render(){
+    ctx.clearRect(0,0,W,H);
+    // paddles
+    ctx.fillStyle='#0ff';
+    ctx.fillRect(0, state.p1Y, P_W, P_H0);
+    ctx.fillRect(W-P_W, state.p2Y, P_W, P_H0);
+    // balls
+    ctx.fillStyle='#ff0';
+    state.balls.forEach(b=>{
+      ctx.beginPath();
+      ctx.arc(b.x,b.y,R0,0,2*Math.PI);
+      ctx.fill();
+    });
+    // buffs
+    state.buffs.forEach(b=>{
+      const ico = {double:'#f0f',grow:'#0f0',shrink:'#f00',fast:'#ff0',dark:'#00f'}[b.type];
+      ctx.fillStyle = ico;
+      ctx.fillRect(b.x-8,b.y-8,16,16);
+    });
+    // dark overlay
+    darkOv.style.opacity = state.effects.some(e=>e.type==='dark')? '1':'0';
+    // clean expired effects
+    const now = performance.now();
+    state.effects = state.effects.filter(e=> now<e.exp);
+  }
+
+  // End game
+  function endGame(){
+    endText.textContent = state.score1>state.score2? 'KAZANDIN!' : 'CPU Kazandı';
+    overlay.style.visibility='visible';
+    restartBtn.style.display='inline-block';
+  }
+  function restart(){
+    overlay.style.visibility='hidden';
+    paused = false;
+    state.score1=0; state.score2=0;
+    state.time = GAME_TIME;
+    resetBall();
+  }
+})();
+</script>
 </body>
 </html>

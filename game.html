@@ -1,177 +1,186 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ping Pong Match</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ping Pong Match</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:Arial,sans-serif;overflow:hidden;background:#111;color:#fff;}
-    #toolbar{
-      display:flex;justify-content:space-between;align-items:center;
-      padding:0.5rem;background:rgba(0,0,0,0.6);
-    }
-    #toolbar button{background:#222;color:#fff;border:none;padding:0.3rem 0.6rem;
-      cursor:pointer;border-radius:4px;}
-    #toolbar span{font-size:1.2rem;}
-    #canvas{display:block;margin:0 auto;background:#222;}
-    #toast{
-      position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);
-      background:rgba(0,0,0,0.7);padding:0.5rem 1rem;border-radius:4px;
-      opacity:0;transition:opacity 0.3s;
-    }
+    body,html{width:100%;height:100%;background:#111;color:#fff;overflow:hidden;font-family:sans-serif;}
+    #canvas{display:block;margin:0 auto;background:#222;border:3px dashed #0ff;}
+    #ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2rem;font-size:1.2rem;}
+    #controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:none;
+      width:80%;height:60px;background:rgba(255,255,255,0.1);border-radius:30px;touch-action:none;}
+    #timer{position:absolute;top:10px;right:10px;font-size:1.2rem;}
   </style>
 </head>
 <body>
-
-  <div id="toolbar">
-    <button id="backBtn">← Lobby</button>
-    <span id="scoreDisplay">0 : 0</span>
-    <button id="pauseBtn">⏸</button>
+  <canvas id="canvas" width="900" height="500"></canvas>
+  <div id="ui">
+    <div>Player: <span id="score1">0</span></div>
+    <div>CPU:    <span id="score2">0</span></div>
   </div>
-  <canvas id="canvas" width="800" height="500"></canvas>
-  <div id="toast"></div>
+  <div id="timer">02:00</div>
+  <div id="controls"></div>
 
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
-  // Utils
-  function showToast(msg,ms=1000){
-    const t=document.getElementById('toast');
-    t.textContent=msg; t.style.opacity=1;
-    clearTimeout(t._h);
-    t._h=setTimeout(()=>t.style.opacity=0,ms);
-  }
+  (async()=>{
+    // 1) Params & Firebase init
+    const ps=new URLSearchParams(location.search);
+    const table=ps.get('table'), user=ps.get('user');
+    if(!table||!user) return alert('Eksik parametre');
+    const cfg={
+      apiKey:"AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+      authDomain:"masa-tenisi-v1.firebaseapp.com",
+      databaseURL:"https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId:"masa-tenisi-v1",
+      storageBucket:"masa-tenisi-v1.appspot.com",
+      messagingSenderId:"186015084983",
+      appId:"1:186015084983:web:86f9d88e907423f5e33832",
+      measurementId:"G-9VSFKH0NS4"
+    };
+    firebase.initializeApp(cfg);
+    const db=firebase.database();
+    const stateRef=db.ref(`games/${table}/state`);
+    const scoreRef=db.ref(`leaderboard/${user}`);
 
-  // Parse name
-  const params=new URLSearchParams(location.search);
-  const playerName=params.get('name')||'Oyuncu';
+    // 2) Canvas & UI
+    const canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height;
+    const P_H=100,P_W=12,B_R=10;
+    let state={
+      ball:{x:W/2,y:H/2,dx:6,dy:4},
+      p1:{y:(H-P_H)/2},
+      p2:{y:(H-P_H)/2},
+      score1:0,score2:0,playing:true
+    };
+    let timer=120; // 2dk
+    document.getElementById('score1').textContent=0;
+    document.getElementById('score2').textContent=0;
 
-  // State
-  const W=800,H=500;
-  const P={W:12,H:100,S:400};
-  const B={R:8,S:300};
-  let state={
-    pY:(H-P.H)/2,
-    cY:(H-P.H)/2,
-    ball:{x:W/2,y:H/2,vx:B.S,vy:B.S},
-    s1:0,s2:0,
-    paused:false,
-    time:120 // seconds
-  };
+    // 3) Host initialize
+    await stateRef.set(state);
 
-  // Canvas
-  const c=document.getElementById('canvas'),ctx=c.getContext('2d');
-
-  // Controls
-  let input={};
-  c.onmousemove=e=>{
-    const r=c.getBoundingClientRect();
-    state.pY=Math.max(0,Math.min(H-P.H,e.clientY-r.top-P.H/2));
-  };
-  c.ontouchmove=e=>{
-    e.preventDefault();
-    const t=e.touches[0],r=c.getBoundingClientRect();
-    state.pY=Math.max(0,Math.min(H-P.H,t.clientY-r.top-P.H/2));
-  };
-
-  window.addEventListener('keydown',e=>{
-    if(e.key==='w') state.pY-=P.S/30;
-    if(e.key==='s') state.pY+=P.S/30;
-    if(e.key===' ') state.paused=!state.paused,document.getElementById('pauseBtn').textContent=state.paused?'▶':'⏸';
-  });
-
-  // Buttons
-  document.getElementById('backBtn').onclick = ()=>location.href='index.html';
-  document.getElementById('pauseBtn').onclick = ()=>{
-    state.paused=!state.paused;
-    document.getElementById('pauseBtn').textContent=state.paused?'▶':'⏸';
-  };
-
-  // Physics loop
-  let last=performance.now();
-  function loop(now){
-    const dt=(now-last)/1000; last=now;
-    if(!state.paused){
-      // Paddle AI
-      const tgt=state.ball.y-P.H/2;
-      state.cY += Math.sign(tgt-state.cY)*P.S*0.6*dt;
-      state.cY=Math.max(0,Math.min(H-P.H,state.cY));
-      // Ball
-      let b=state.ball;
-      b.x+=b.vx*dt; b.y+=b.vy*dt;
-      // Walls
-      if(b.y<=B.R||b.y>=H-B.R){ b.vy*=-1; showToast('Wall!'); }
-      // Paddles
-      if(b.x<=P.W+B.R){
-        if(b.y>state.pY&&b.y<state.pY+P.H){ b.vx*=-1; showToast('Hit!'); }
-        else score(2);
-      }
-      if(b.x>=W-P.W-B.R){
-        if(b.y>state.cY&&b.y<state.cY+P.H){ b.vx*=-1; showToast('Nice!'); }
-        else score(1);
-      }
-      // Timer
-      state.time-=dt;
-      if(state.time<=0) end();
-    }
-    render();
-    requestAnimationFrame(loop);
-  }
-
-  function score(p){
-    if(p===1) state.s1++; else state.s2++;
-    showToast(`P${p} +1`);
-    resetBall();
-    if(Math.max(state.s1,state.s2)>=5) end();
-  }
-
-  function resetBall(){
-    let b=state.ball;
-    b.x=W/2; b.y=H/2;
-    b.vx=(Math.random()<0.5?-1:1)*B.S;
-    b.vy=(Math.random()<0.5?-1:1)*B.S;
-  }
-
-  function end(){
-    state.paused=true;
-    const winner= state.s1>state.s2? playerName:'CPU';
-    showToast(`Game Over: ${winner}`,4000);
-    // Push to Firebase leaderboard
-    try{
-      const db=firebase.database();
-      db.ref('scores/'+encodeURIComponent(playerName))
-        .set({ name:playerName, score:state.s1 });
-    }catch{}
-  }
-
-  function render(){
-    ctx.clearRect(0,0,W,H);
-    // paddles
-    ctx.fillStyle='#fff';
-    ctx.fillRect(0,state.pY,P.W,P.H);
-    ctx.fillRect(W-P.W,state.cY,P.W,P.H);
-    // ball
-    ctx.beginPath();
-    ctx.arc(state.ball.x,state.ball.y,B.R,0,2*Math.PI);
-    ctx.fill();
-    // score
-    document.getElementById('scoreDisplay').textContent = 
-      `${state.s1} : ${state.s2}`;
-  }
-
-  // Start
-  resetBall();
-  requestAnimationFrame(loop);
-  </script>
-
-  <!-- Firebase (re-init for game page) -->
-  <script>
-    // same config as lobby
-    firebase.initializeApp({
-      apiKey: "...YOUR CONFIG...",
-      authDomain: "...",
-      databaseURL: "...default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "masa-tenisi-v1",
+    // 4) Listen state
+    stateRef.on('value',snap=>{
+      Object.assign(state,snap.val());
+      document.getElementById('score1').textContent=state.score1;
+      document.getElementById('score2').textContent=state.score2;
     });
+
+    // 5) Draw loop
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle='#0ff';
+      ctx.fillRect(0,state.p1.y,P_W,P_H);
+      ctx.fillStyle='#f0f';
+      ctx.fillRect(W-P_W,state.p2.y,P_W,P_H);
+      ctx.beginPath();
+      ctx.fillStyle='#ff0';
+      ctx.arc(state.ball.x,state.ball.y,B_R,0,2*Math.PI);
+      ctx.fill();
+      if(state.playing) requestAnimationFrame(draw);
+    }
+    draw();
+
+    // 6) Host physics + buffs + timer
+    if(true){ // single-host page
+      // random buff spawner
+      const buffs=[];
+      function spawnBuff(){
+        const x=Math.random()*(W-100)+50;
+        const y=Math.random()*(H-100)+50;
+        const type=['grow','shrink','double'][Math.floor(Math.random()*3)];
+        buffs.push({x,y,r:15,type,active:false});
+      }
+      setInterval(spawnBuff,20000+Math.random()*10000);
+
+      const iv=setInterval(()=>{
+        if(!state.playing) return;
+        // move paddles
+        // CPU autoplayer
+        state.p2.y += (state.ball.y - (state.p2.y+P_H/2)) * 0.05;
+        state.p2.y=Math.max(0,Math.min(H-P_H,state.p2.y));
+        // ball
+        state.ball.x+=state.ball.dx;
+        state.ball.y+=state.ball.dy;
+        if(state.ball.y<=B_R||state.ball.y>=H-B_R) state.ball.dy*=-1;
+        // paddle1 collision
+        if(state.ball.x<=P_W+B_R){
+          if(state.ball.y>=state.p1.y&&state.ball.y<=state.p1.y+P_H) state.ball.dx*=-1;
+          else pointTo(2);
+        }
+        // paddle2
+        if(state.ball.x>=W-P_W-B_R){
+          if(state.ball.y>=state.p2.y&&state.ball.y<=state.p2.y+P_H) state.ball.dx*=-1;
+          else pointTo(1);
+        }
+        // buff collision
+        buffs.forEach(b=>{
+          if(!b.active && Math.hypot(state.ball.x-b.x,state.ball.y-b.y)<B_R+b.r){
+            b.active=true;
+            if(b.type==='grow') P_H*=1.2;
+            if(b.type==='shrink') P_H*=0.8;
+            if(b.type==='double'){
+              // spawn second ball
+              stateRef.child('ball2').set({...state.ball,dx:-state.ball.dx,dy:state.ball.dy});
+            }
+          }
+        });
+        // timer--
+        if(--timer<=0){
+          state.playing=false;
+          clearInterval(iv);
+        }
+        stateRef.set(state);
+      },1000/60);
+
+      function pointTo(pl){
+        if(pl===1) state.score1++; else state.score2++;
+        // reset
+        state.ball={x:W/2,y:H/2,dx:6*(Math.random()<.5?1:-1),dy:4};
+        stateRef.update({score1:state.score1,score2:state.score2,ball:state.ball});
+        // update leaderboard
+        scoreRef.transaction(cur=>({wins:(cur?.wins||0)+ (pl===1?1:0)}));
+      }
+    }
+
+    // 7) Controls (mouse & touch)
+    function sendY(y){
+      stateRef.child('p1/y').set(Math.max(0,Math.min(H-P_H,y)));
+    }
+    if('ontouchstart' in window){
+      const ctr=document.getElementById('controls'); ctr.style.display='block';
+      let drag=false;
+      ctr.addEventListener('pointerdown',()=>drag=true);
+      ctr.addEventListener('pointerup',()=>drag=false);
+      ctr.addEventListener('pointermove',e=>{
+        if(!drag) return;
+        const pct=(e.clientX-ctr.getBoundingClientRect().left)/ctr.offsetWidth;
+        sendY(pct*(H-P_H));
+      });
+    } else {
+      canvas.addEventListener('mousemove',e=>{
+        const y=e.clientY-canvas.getBoundingClientRect().top-P_H/2;
+        sendY(y);
+      });
+    }
+
+    // 8) Countdown & start
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;'+
+      'background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;'+
+      'font-size:5rem;color:#fff;z-index:10';
+    document.body.append(overlay);
+    let cnt=3; overlay.textContent=cnt;
+    const ci=setInterval(()=>{
+      cnt--; if(cnt>0) overlay.textContent=cnt;
+      else{ clearInterval(ci); overlay.remove(); }
+    },1000);
+
+  })();
   </script>
 </body>
 </html>

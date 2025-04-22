@@ -7,7 +7,6 @@
   <style>
     /* Reset */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: Arial, sans-serif;
       background: #111;
@@ -18,18 +17,12 @@
       min-height: 100vh;
       transition: background 0.3s, color 0.3s;
     }
-    /* Neon theme overrides */
     body.theme-neon {
       background: #000;
       color: #0ff;
     }
-    body.theme-neon .table-card {
-      border-color: #0ff;
-    }
-    body.theme-neon .btn-join {
-      background: #0ff;
-      color: #000;
-    }
+    body.theme-neon .table-card { border-color: #0ff; }
+    body.theme-neon .btn-join { background: #0ff; color: #000; }
 
     header {
       margin: 1rem;
@@ -46,7 +39,7 @@
       background: #222; padding:2rem; border-radius:8px;
       width: 90%; max-width: 320px;
     }
-    #loginModal input, #loginModal select, #loginModal button {
+    #loginModal select, #loginModal button {
       width: 100%; margin-top:1rem; padding:0.5rem;
       border-radius:4px; border: none;
       font-size: 1rem;
@@ -123,31 +116,37 @@
     <p>Masalardan birine katılın, “Ready” deyin, 3–2–1 geri sayım sonrası oyuna!</p>
   </header>
 
-  <!-- Giriş Modalı -->
+  <!-- Theme selector ONLY -->
   <div id="loginModal">
     <div class="box">
-      <h2>Hoşgeldiniz!</h2>
-      <input type="text" id="username" placeholder="Kullanıcı adın" />
+      <h2>Renk Temasını Seçin</h2>
       <select id="themeSelect">
         <option value="dark">Dark Theme</option>
         <option value="neon">Neon Theme</option>
       </select>
-      <button id="btnEnter">Giriş Yap</button>
+      <button id="btnEnter">Başla</button>
     </div>
   </div>
 
-  <!-- Masa Kartları -->
+  <!-- Table cards -->
   <div id="tables"></div>
 
-  <!-- 3-2-1 Sayacı -->
+  <!-- 3-2-1 Countdown -->
   <div id="countdownOverlay"></div>
 
-  <!-- Firebase SDK’ları -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
-
   <script>
-    // 1) Firebase config
+  (function(){
+    // 0) assign or retrieve a unique clientId
+    let clientId = localStorage.getItem('clientId');
+    if (!clientId) {
+      clientId = crypto.randomUUID();
+      localStorage.setItem('clientId', clientId);
+    }
+
+    // 1) Firebase config + init
     const firebaseConfig = {
       apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
       authDomain: "masa-tenisi-v1.firebaseapp.com",
@@ -160,32 +159,26 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 2) Global State
-    let currentUser = null;
-    let currentTheme = 'dark';
     const NUM_TABLES = 4;
+    let currentTheme = 'dark';
 
-    // 3) DOM Elements
+    // DOM refs
     const loginModal = document.getElementById('loginModal');
-    const btnEnter = document.getElementById('btnEnter');
-    const usernameInput = document.getElementById('username');
+    const btnEnter    = document.getElementById('btnEnter');
     const themeSelect = document.getElementById('themeSelect');
-    const tablesContainer = document.getElementById('tables');
-    const countdownOverlay = document.getElementById('countdownOverlay');
+    const tablesContainer   = document.getElementById('tables');
+    const countdownOverlay  = document.getElementById('countdownOverlay');
 
-    // 4) Giriş işlemi
-    btnEnter.addEventListener('click', () => {
-      const name = usernameInput.value.trim();
-      if (!name) { alert('Lütfen isim girin.'); return; }
-      currentUser = name;
+    // on “Başla”
+    btnEnter.onclick = () => {
       currentTheme = themeSelect.value;
       document.body.classList.add('theme-'+currentTheme);
       loginModal.style.display = 'none';
       initLobby();
-    });
+    };
 
     async function initLobby() {
-      // 4.a) DB’de tablo kökü oluştur (eğer yoksa)
+      // seed tables if missing
       const rootRef = db.ref('lobby/tables');
       const snap = await rootRef.once('value');
       if (!snap.exists()) {
@@ -195,8 +188,8 @@
         await rootRef.set(seed);
       }
 
-      // 4.b) Masaları DOM’a bas
-      for (let i = 1; i <= NUM_TABLES; i++) {
+      // render table cards
+      for (let i=1; i<=NUM_TABLES; i++){
         const card = document.createElement('div');
         card.classList.add('table-card');
         card.dataset.tableId = i;
@@ -214,87 +207,101 @@
         tablesContainer.append(card);
       }
 
-      // 4.c) DB listener’ı: tablo durumları
+      // listen for lobby changes
       db.ref('lobby/tables').on('value', snap => {
-        const data = snap.val() || {};
-        updateLobbyUI(data);
+        updateLobbyUI(snap.val()||{});
       });
 
-      // 4.d) Buton işleyicileri
+      // button handlers
       tablesContainer.addEventListener('click', e => {
         const card = e.target.closest('.table-card');
         if (!card) return;
-        const tableId = card.dataset.tableId;
-        if (e.target.classList.contains('btn-join')) joinTable(tableId);
-        if (e.target.classList.contains('btn-ready')) toggleReady(tableId);
+        const id = card.dataset.tableId;
+        if (e.target.classList.contains('btn-join')) joinTable(id);
+        if (e.target.classList.contains('btn-ready')) toggleReady(id);
       });
     }
 
-    function updateLobbyUI(tables) {
-      document.querySelectorAll('.table-card').forEach(card => {
+    function updateLobbyUI(tables){
+      document.querySelectorAll('.table-card').forEach(card=>{
         const id = card.dataset.tableId;
-        const st = tables[id] || {};
+        const st = tables[id]||{};
         const slot1 = card.querySelector('.slot[data-slot="1"]');
         const slot2 = card.querySelector('.slot[data-slot="2"]');
-        const btnJoin = card.querySelector('.btn-join');
+        const btnJoin  = card.querySelector('.btn-join');
         const btnReady = card.querySelector('.btn-ready');
 
-        slot1.textContent = st.p1 || 'Boş';
-        slot2.textContent = st.p2 || 'Boş';
+        // text: You / Occupied / Empty
+        slot1.textContent = (st.p1===clientId ? 'You'
+                          : st.p1             ? 'Occupied'
+                          : 'Empty');
+        slot2.textContent = (st.p2===clientId ? 'You'
+                          : st.p2             ? 'Occupied'
+                          : 'Empty');
 
-        let mySlot = st.p1===currentUser?'1': st.p2===currentUser?'2': null;
-        btnJoin.disabled = !!mySlot || (st.p1 && st.p2);
+        // join / ready logic
+        const mySlot = (st.p1===clientId?'1': st.p2===clientId?'2': null);
+        btnJoin.disabled  = !!mySlot || (st.p1 && st.p2);
         btnReady.disabled = !mySlot;
-
         if (mySlot) {
           btnReady.textContent = st['ready'+mySlot] ? 'Cancel' : 'Ready';
         }
 
-        // Eğer iki taraf da hazırsa başlat
-        if (st.ready1 && st.ready2) {
+        // if both ready → countdown → game
+        if (st.ready1 && st.ready2){
           startCountdown(id);
         }
       });
     }
 
-    let countdownRunning = false;
-    function startCountdown(tableId) {
+    let countdownRunning=false;
+    function startCountdown(tableId){
       if (countdownRunning) return;
       countdownRunning = true;
       let count = 3;
       countdownOverlay.style.display = 'flex';
       countdownOverlay.textContent = count;
-      const iv = setInterval(() => {
+      const iv = setInterval(()=>{
         count--;
-        if (count>0) {
-          countdownOverlay.textContent = count;
-        } else {
+        if (count>0) countdownOverlay.textContent = count;
+        else {
           clearInterval(iv);
-          // yönlendir:
-          location.href = `game.html?table=${tableId}&user=${encodeURIComponent(currentUser)}&theme=${currentTheme}`;
+          location.href = `game.html?table=${tableId}&theme=${currentTheme}`;
         }
-      }, 1000);
+      },1000);
     }
 
-    function joinTable(tableId) {
-      db.ref(`lobby/tables/${tableId}`).transaction(cur => {
-        if (!cur) cur = { p1:null, p2:null, ready1:false, ready2:false };
-        if (cur.p1===currentUser||cur.p2===currentUser) return cur;
-        if (!cur.p1) cur.p1 = currentUser;
-        else if (!cur.p2) cur.p2 = currentUser;
+    function joinTable(tableId){
+      const ref = db.ref(`lobby/tables/${tableId}`);
+      ref.transaction(cur=>{
+        if (!cur) cur = {p1:null,p2:null,ready1:false,ready2:false};
+        if (cur.p1===clientId||cur.p2===clientId) return cur;
+        if (!cur.p1) cur.p1=clientId;
+        else if (!cur.p2) cur.p2=clientId;
         return cur;
+      }, (err, committed, snap)=>{
+        if (committed){
+          const val = snap.val();
+          const slot = (val.p1===clientId?'1':'2');
+          // drop them on disconnect
+          ref.child(`p${slot}`).onDisconnect().set(null);
+          ref.child(`ready${slot}`).onDisconnect().set(false);
+        }
       });
     }
 
-    function toggleReady(tableId) {
-      db.ref(`lobby/tables/${tableId}`).transaction(cur => {
+    function toggleReady(tableId){
+      const ref = db.ref(`lobby/tables/${tableId}`);
+      ref.transaction(cur=>{
         if (!cur) return;
-        const slot = (cur.p1===currentUser?'1':cur.p2===currentUser?'2':null);
+        const slot = (cur.p1===clientId?'1': cur.p2===clientId?'2': null);
         if (!slot) return;
         cur['ready'+slot] = !cur['ready'+slot];
         return cur;
       });
     }
+
+  })();
   </script>
 </body>
 </html>

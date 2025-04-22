@@ -1,193 +1,167 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Ping Pong JS</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ping Pong Game</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    canvas{background:#111;display:block;margin:0 auto;}
-    #touchpad {
-      position: fixed;
-      bottom: 0; left: 0;
-      width: 100%; height: 30%;
-      background: rgba(255,255,255,0.05);
-      touch-action: none;
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
+    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
+      header div{font-size:1.2rem;}
+      .heading{font-size:1.5rem;}
+    .arena {
+      position:relative;
+      width:900px; height:600px;
+      margin:2rem auto;
+      background:#222; border:3px dashed #0ff;
+      overflow:hidden;
     }
-    #info {
-      position: fixed; top: 10px; left:50%;
-      transform: translateX(-50%);
-      color: white; font-family: monospace;
+    .player-left-paddle, .player-right-paddle, .ping-pong-ball{
+      position:absolute;
+      border-radius:4px;
     }
+    .player-left-paddle {
+      width:12px; height:85px;
+      left:0; background:#0ff;
+    }
+    .player-right-paddle {
+      width:12px; height:85px;
+      right:0; background:#f0f;
+    }
+    .ping-pong-ball {
+      width:15px; height:15px;
+      background:#ff0;
+      box-shadow:0 0 8px #ff0;
+      margin:-7.5px;
+    }
+    /* oyun alanı merkezleme */
+    .arena { transform: translateY(0); }
   </style>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <div id="info"></div>
-  <canvas id="c" width="900" height="600"></canvas>
-  <div id="touchpad"></div>
+  <header>
+    <div>Player 1: <span id="score1">0</span></div>
+    <div class="heading">PING PONG</div>
+    <div>Player 2: <span id="score2">0</span></div>
+  </header>
+  <div class="arena" id="arena">
+    <div id="paddle1" class="player-left-paddle"></div>
+    <div id="ball"    class="ping-pong-ball"></div>
+    <div id="paddle2" class="player-right-paddle"></div>
+  </div>
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
   <script>
-    // --- URL Parametreleri ---
-    const params = new URLSearchParams(location.search);
-    const ROOM = params.get('room') || 'room1';
-    const ROLE = params.get('role') || 'viewer';
-    document.getElementById('info').textContent = `${ROOM.toUpperCase()} — ROLE: ${ROLE}`;
+  // parametreleri al
+  const ps = new URLSearchParams(location.search);
+  const room = ps.get('room');
+  const role = ps.get('role');        // "player1" veya "player2"
 
-    // --- Firebase init ---
-    const cfg = {
-      apiKey: "...",
-      authDomain: "...",
-      databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "masa-tenisi-v1",
-      storageBucket: "...",
-      messagingSenderId: "...",
-      appId: "..."
-    };
-    const app = firebase.initializeApp(cfg);
-    const db  = firebase.database();
-    const stateRef = db.ref(`game/${ROOM}/state`);
+  // Firebase init
+  const firebaseConfig = {
+    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
+    authDomain: "masa-tenisi-v1.firebaseapp.com",
+    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "masa-tenisi-v1",
+    storageBucket: "masa-tenisi-v1.appspot.com",
+    messagingSenderId: "186015084983",
+    appId: "1:186015084983:web:86f9d88e907423f5e33832"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const paddlesRef = db.ref(`rooms/${room}/paddles`);
+  const ballRef    = db.ref(`rooms/${room}/ball`);
+  const scoreRef   = db.ref(`rooms/${room}/score`);
 
-    // --- Canvas & context ---
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
+  // sabitler
+  const arenaW=900, arenaH=600, padW=12, padH=85, ballR=7.5;
+  const paddle = { player1: (arenaH-padH)/2, player2: (arenaH-padH)/2 };
+  let ball   = { x:arenaW/2, y:arenaH/2, vx:250, vy:250 };
+  let score  = { p1:0, p2:0 };
+  let keys   = {};
 
-    // --- Oyun nesneleri ---
-    const P = { w:12, h:85, speed:8 };
-    let left  = { y:(H-P.h)/2 };
-    let right = { y:(H-P.h)/2 };
-    let ball  = { x:W/2, y:H/2, vx:5, vy:5, r:10 };
-    let scoreL = 0, scoreR = 0;
-
-    // --- Kullanıcı kontrol modu ---
-    let controlMode = 'keyboard'; // 'keyboard'|'mouse'|'touch'
-    document.addEventListener('keydown', e => {
-      if(e.key==='1') controlMode='keyboard';
-      if(e.key==='2') controlMode='mouse';
-      if(e.key==='3') controlMode='touch';
-    });
-
-    // --- Klavye ---
-    const keys = {};
-    window.addEventListener('keydown',e=>keys[e.key]=true);
-    window.addEventListener('keyup',e=>keys[e.key]=false);
-
-    // --- Mouse ---
-    canvas.addEventListener('mousemove', e=>{
-      if(controlMode!=='mouse') return;
-      const ry = e.clientY - canvas.getBoundingClientRect().top;
-      if(ROLE==='player1') left.y = ry-P.h/2;
-      if(ROLE==='player2') right.y= ry-P.h/2;
-    });
-
-    // --- Touchpad ---
-    const tp = document.getElementById('touchpad');
-    tp.addEventListener('pointerdown',startTouch);
-    tp.addEventListener('pointermove',moveTouch);
-    tp.addEventListener('pointerup',endTouch);
-    let touching=false, idTouch=null;
-    function startTouch(e){
-      touching=true; idTouch=e.pointerId; handleTouch(e);
-    }
-    function moveTouch(e){
-      if(!touching||e.pointerId!==idTouch) return;
-      handleTouch(e);
-    }
-    function endTouch(e){
-      if(e.pointerId===idTouch) touching=false;
-    }
-    function handleTouch(e){
-      if(controlMode!=='touch') return;
-      const ry = e.clientY - canvas.getBoundingClientRect().top;
-      if(ROLE==='player1') left.y = ry-P.h/2;
-      if(ROLE==='player2') right.y= ry-P.h/2;
-    }
-
-    // --- Firebase’dan okuma (tüm roller dinler) ---
-    stateRef.on('value', snap=>{
-      const s = snap.val();
-      if(!s) return;
-      Object.assign(left,  { y:s.leftY });
-      Object.assign(right, { y:s.rightY });
-      Object.assign(ball,  { x:s.ballX, y:s.ballY });
-      scoreL = s.scoreL; scoreR = s.scoreR;
-    });
-
-    // --- Physics & render ---
-    function update(){
-      // Sadece oyuncular kendi paddle’ını hareket ettirir:
-      if(ROLE==='player1' && controlMode==='keyboard'){
-        if(keys['w']) left.y -= P.speed;
-        if(keys['s']) left.y += P.speed;
-      }
-      if(ROLE==='player2' && controlMode==='keyboard'){
-        if(keys['ArrowUp']) right.y -= P.speed;
-        if(keys['ArrowDown']) right.y += P.speed;
-      }
-      // sınırlar
-      left.y  = Math.max(0, Math.min(H-P.h, left.y));
-      right.y = Math.max(0, Math.min(H-P.h, right.y));
-
-      // Fizik GENEL (herkesin bilgisayarında çalışabilir)
-      ball.x += ball.vx;
-      ball.y += ball.vy;
-      if(ball.y<ball.r||ball.y>H-ball.r) ball.vy = -ball.vy;
-
-      // paddle çarpışma
-      if(ball.x < P.w+ball.r){
-        if(ball.y>left.y && ball.y<left.y+P.h) ball.vx = -ball.vx;
-        else { scoreR++; resetBall(); }
-      }
-      if(ball.x > W-P.w-ball.r){
-        if(ball.y>right.y && ball.y<right.y+P.h) ball.vx = -ball.vx;
-        else { scoreL++; resetBall(); }
-      }
-
-      // Firebase’e yaz (her karede güncel state’i set)
-      stateRef.set({
-        leftY: left.y,
-        rightY: right.y,
-        ballX: ball.x,
-        ballY: ball.y,
-        scoreL, scoreR
-      });
-
-      render();
-      requestAnimationFrame(update);
-    }
-
+  // host=*/player1 physics loop
+  if(role==='player1'){
+    // başlatırken topa rastgele yön
     function resetBall(){
-      ball.x = W/2; ball.y=H/2;
-      // hız rastgele yön
-      ball.vx = (Math.random()<0.5?1:-1)*5;
-      ball.vy = (Math.random()<0.5?1:-1)*5;
+      ball.x = arenaW/2; ball.y = arenaH/2;
+      ball.vx = 250*(Math.random()<0.5?1:-1);
+      ball.vy = 250*(Math.random()<0.5?1:-1);
     }
-
-    function render(){
-      ctx.clearRect(0,0,W,H);
-      // orta çizgi
-      ctx.strokeStyle='#555';
-      ctx.setLineDash([10,10]);
-      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
-      ctx.setLineDash([]);
-      // paddles
-      ctx.fillStyle='#fff';
-      ctx.fillRect(0, left.y, P.w, P.h);
-      ctx.fillRect(W-P.w, right.y, P.w, P.h);
-      // top
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r, 0, 2*Math.PI);
-      ctx.fill();
-      // skor
-      ctx.font='24px monospace';
-      ctx.fillText(`${scoreL} – ${scoreR}`, W/2-30, 30);
-    }
-
     resetBall();
-    update();
+    let last=performance.now();
+    function frame(now){
+      const dt=(now-last)/1000; last=now;
+      // paddle1 kontrol
+      if(keys['w']||keys['ArrowUp'])   paddle.player1=Math.max(0,paddle.player1-300*dt);
+      if(keys['s']||keys['ArrowDown']) paddle.player1=Math.min(arenaH-padH,paddle.player1+300*dt);
+      paddlesRef.child('player1').set(paddle.player1);
+      // paddle2’yi oku
+      paddlesRef.child('player2').once('value',s=>{
+        if(s.exists()) paddle.player2=s.val();
+      });
+      // top hareketi
+      ball.x += ball.vx*dt;
+      ball.y += ball.vy*dt;
+      // üst-alt duvar
+      if(ball.y<=ballR||ball.y>=arenaH-ballR) ball.vy*=-1;
+      // sol gol
+      if(ball.x<=padW+ballR){
+        if(ball.y< paddle.player1||ball.y>paddle.player1+padH){
+          score.p2++; resetBall();
+        } else { ball.vx=Math.abs(ball.vx); }
+      }
+      // sağ gol
+      if(ball.x>=arenaW-padW-ballR){
+        if(ball.y< paddle.player2||ball.y>paddle.player2+padH){
+          score.p1++; resetBall();
+        } else { ball.vx=-Math.abs(ball.vx); }
+      }
+      // DB’ye yaz
+      ballRef.set(ball);
+      scoreRef.set(score);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // bütün client’lar → render + player2 kontrol
+  paddle.player1 = paddle.player2 = (arenaH-padH)/2;
+  ball = { x:arenaW/2, y:arenaH/2, vx:0, vy:0 };
+  score= { p1:0,p2:0 };
+
+  paddlesRef.child('player1').on('value',s=>{ if(s.exists()) paddle.player1=s.val(); render(); });
+  paddlesRef.child('player2').on('value',s=>{ if(s.exists()) paddle.player2=s.val(); render(); });
+  ballRef.on('value',s=>{ if(s.exists()) ball=s.val(); render(); });
+  scoreRef.on('value',s=>{ if(s.exists()){
+    score=s.val();
+    document.getElementById('score1').textContent=score.p1;
+    document.getElementById('score2').textContent=score.p2;
+  }})
+
+  function render(){
+    document.getElementById('paddle1').style.top  = paddle.player1+'px';
+    document.getElementById('paddle2').style.top  = paddle.player2+'px';
+    document.getElementById('ball').style.left    = ball.x+'px';
+    document.getElementById('ball').style.top     = ball.y+'px';
+  }
+
+  // klavye dinle
+  window.addEventListener('keydown',e=>keys[e.key]=true);
+  window.addEventListener('keyup',  e=>keys[e.key]=false);
+
+  // player2 fareyle kontrol
+  if(role==='player2'){
+    document.getElementById('arena').addEventListener('mousemove',e=>{
+      const r=e.target.getBoundingClientRect();
+      let y=e.clientY - r.top - padH/2;
+      y=Math.max(0,Math.min(arenaH-padH,y));
+      paddlesRef.child('player2').set(y);
+    });
+  }
   </script>
 </body>
 </html>

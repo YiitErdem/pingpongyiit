@@ -2,166 +2,171 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong Game</title>
-  <style>
-    * { box-sizing:border-box; margin:0; padding:0; }
-    body, html {
-      width:100%; height:100%;
-      background:#000; overflow:hidden;
-      font-family:Arial,sans-serif; color:#0ff;
-    }
-    canvas { background:#111; display:block; margin:0 auto; }
-    #score {
-      position:absolute; top:10px; left:50%;
-      transform:translateX(-50%);
-      font-size:1.5rem; letter-spacing:4px;
-    }
-    #score span { margin:0 1rem; }
-    #slider {
-      position:absolute; bottom:20px; left:50%;
-      transform:translateX(-50%);
-      width:80%; max-width:400px;
-      display:none;
-    }
-    @media (pointer: coarse) {
-      #slider { display:block; }
-      canvas { touch-action:none; }
-    }
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ping Pong Match</title>
+  <link rel="stylesheet" href="styles/game.css">
 </head>
-<body>
+<body class="theme-dark">
 
-  <div id="score">
-    <span id="playerName"></span>
-    <span id="pScore">0</span>–
-    <span id="aiScore">0</span>
-    <span>Computer</span>
+  <!-- UI & Canvas -->
+  <div id="game-toolbar">
+    <button id="backLobby">← Lobby</button>
+    <span id="score1">0</span> : <span id="score2">0</span>
+    <button id="pauseBtn">⏸</button>
   </div>
-  <canvas id="c" width="900" height="500"></canvas>
-  <input type="range" id="slider" min="0" max="400" value="200" />
+  <canvas id="canvas"></canvas>
+  <div id="toast-container"></div>
 
-  <script>
-  (()=>{
-    // params
-    const params = new URLSearchParams(location.search);
-    const playerName = decodeURIComponent(params.get('name')||'You');
-    document.getElementById('playerName').textContent = playerName;
+  <!-- Audio -->
+  <audio id="bgm" loop src="assets/sounds/ambient.mp3"></audio>
+  <audio id="sfx-wall" src="assets/sounds/wall.mp3"></audio>
+  <audio id="sfx-paddle" src="assets/sounds/paddle.mp3"></audio>
+  <audio id="sfx-score" src="assets/sounds/score.mp3"></audio>
+  <audio id="sfx-powerup" src="assets/sounds/powerup.mp3"></audio>
 
-    // canvas
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
+  <script type="module">
+  import { fixedStepLoop }  from './modules/physics.js';
+  import { Toast, vibration } from './modules/ui.js';
+  import { AudioManager }    from './modules/audio.js';
 
-    // paddles & ball
-    const PADDLE_W=12, PADDLE_H=100, BALL_R=10;
-    let pY = (H-PADDLE_H)/2,
-        aiY = (H-PADDLE_H)/2,
-        ball = { x:W/2, y:H/2, vx:5, vy:3 },
-        scoreP=0, scoreA=0;
+  // --- Game constants
+  const WIDTH  = 800, HEIGHT = 500;
+  const PADDLE = { W:12, H:100, SPEED:400 };
+  const BALL   = { R:8, SPEED:300 };
+  const TIME_LIMIT = 120;     // seconds
+  const POWERUPS = [];        // will be populated dynamically
 
-    // slider for mobile
-    const slider = document.getElementById('slider');
-    slider.max = H-PADDLE_H;
-    slider.addEventListener('input', ()=> pY = +slider.value);
+  // --- Canvas Setup
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = WIDTH;
+  canvas.height = HEIGHT;
 
-    // mouse control for desktop
-    canvas.addEventListener('mousemove', e=>{
-      if(window.matchMedia('(pointer: coarse)').matches) return;
-      const rect=canvas.getBoundingClientRect();
-      pY = e.clientY - rect.top - PADDLE_H/2;
-    });
+  // --- State
+  let state = {
+    p1Y: (HEIGHT-PADDLE.H)/2,
+    p2Y: (HEIGHT-PADDLE.H)/2,
+    ball: { x:WIDTH/2, y:HEIGHT/2, vx:BALL.SPEED, vy:BALL.SPEED },
+    score1:0, score2:0,
+    timer: TIME_LIMIT,
+    paused: false
+  };
 
-    // draw
-    function draw(){
-      ctx.clearRect(0,0,W,H);
-      // center line
-      ctx.strokeStyle='#0ff'; ctx.setLineDash([10,10]);
-      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
-      ctx.setLineDash([]);
+  // --- Audio
+  const audio = new AudioManager({
+    bgm:     document.getElementById('bgm'),
+    wall:    document.getElementById('sfx-wall'),
+    paddle:  document.getElementById('sfx-paddle'),
+    score:   document.getElementById('sfx-score'),
+    powerup: document.getElementById('sfx-powerup'),
+  });
+  audio.playBgm();
 
-      // paddles
-      ctx.fillStyle='#0f0';
-      ctx.fillRect(0,pY,PADDLE_W,PADDLE_H);
-      ctx.fillStyle='#f0f';
-      ctx.fillRect(W-PADDLE_W,aiY,PADDLE_W,PADDLE_H);
+  // --- Input
+  let input = { up1:false, down1:false, up2:false, down2:false };
+  window.addEventListener('keydown', e=>{
+    if (e.key==='w') input.up1=true;
+    if (e.key==='s') input.down1=true;
+    if (e.key==='ArrowUp') input.up2=true;
+    if (e.key==='ArrowDown') input.down2=true;
+    if (e.key===' ') { state.paused=!state.paused; }
+  });
+  window.addEventListener('keyup', e=>{
+    if (e.key==='w') input.up1=false;
+    if (e.key==='s') input.down1=false;
+    if (e.key==='ArrowUp') input.up2=false;
+    if (e.key==='ArrowDown') input.down2=false;
+  });
 
-      // ball with glow
-      ctx.fillStyle='#ff0';
-      ctx.shadowColor='#ff0'; ctx.shadowBlur=10;
-      ctx.beginPath(); ctx.arc(ball.x,ball.y,BALL_R,0,2*Math.PI);
-      ctx.fill();
-      ctx.shadowBlur=0;
+  // --- Fixed‑Timestep Physics Loop
+  fixedStepLoop(1/60, dt => {
+    if (state.paused) return;
 
-      requestAnimationFrame(draw);
+    // Paddle Movement
+    if (input.up1)   state.p1Y = Math.max(0, state.p1Y - PADDLE.SPEED*dt);
+    if (input.down1) state.p1Y = Math.min(HEIGHT-PADDLE.H, state.p1Y + PADDLE.SPEED*dt);
+    // CPU for P2
+    const target = state.ball.y - PADDLE.H/2;
+    state.p2Y += Math.sign(target - state.p2Y) * PADDLE.SPEED*0.6*dt;
+    state.p2Y = Math.max(0, Math.min(HEIGHT-PADDLE.H, state.p2Y));
+
+    // Ball Physics
+    let b = state.ball;
+    b.x += b.vx*dt; b.y += b.vy*dt;
+    // Walls
+    if (b.y < BALL.R || b.y > HEIGHT-BALL.R) {
+      b.vy *= -1; audio.play('wall'); new Toast('Wall hit!',200);
+    }
+    // Paddles
+    if (b.x < PADDLE.W+BALL.R) {
+      if (b.y > state.p1Y && b.y < state.p1Y+PADDLE.H) {
+        b.vx *= -1; audio.play('paddle'); new Toast('Nice!',150);
+      } else score(2);
+    }
+    if (b.x > WIDTH-PADDLE.W-BALL.R) {
+      if (b.y > state.p2Y && b.y < state.p2Y+PADDLE.H) {
+        b.vx *= -1; audio.play('paddle'); new Toast('Great!',150);
+      } else score(1);
     }
 
-    // AI moves towards ball
-    function updateAI(){
-      const mid = aiY + PADDLE_H/2;
-      if(mid < ball.y - 10) aiY += 4;
-      else if(mid > ball.y + 10) aiY -= 4;
-      aiY = Math.max(0, Math.min(H-PADDLE_H, aiY));
-    }
+    // Timer
+    state.timer -= dt;
+    if (state.timer <= 0) endMatch();
 
-    // game loop
-    function loop(){
-      // move ball
-      ball.x += ball.vx; ball.y += ball.vy;
+    render();
+  });
 
-      // wall bounce
-      if(ball.y < BALL_R || ball.y > H-BALL_R) ball.vy *= -1;
+  // --- Score
+  function score(player) {
+    state[`score${player}`] += 1;
+    audio.play('score');
+    new Toast(`Player ${player} scored!`, 800);
+    resetBall();
+    if (Math.max(state.score1, state.score2) >= 5) endMatch();
+  }
 
-      // paddle collision
-      // player
-      if(ball.x < PADDLE_W+BALL_R){
-        const rel = (ball.y - pY) / PADDLE_H - 0.5;
-        if(rel > -0.5 && rel < 0.5){
-          // reflect with angle
-          const angle = rel * Math.PI/3;
-          const speed = Math.hypot(ball.vx,ball.vy) * 1.05; 
-          ball.vx =  speed * Math.cos(angle);
-          ball.vy =  speed * Math.sin(angle);
-        } else {
-          scoreA++;
-          document.getElementById('aiScore').textContent = scoreA;
-          reset();
-        }
-      }
-      // AI
-      if(ball.x > W-PADDLE_W-BALL_R){
-        const rel = (ball.y - aiY) / PADDLE_H - 0.5;
-        if(rel > -0.5 && rel < 0.5){
-          const angle = Math.PI - rel * Math.PI/3;
-          const speed = Math.hypot(ball.vx,ball.vy) * 1.05;
-          ball.vx =  speed * Math.cos(angle);
-          ball.vy =  speed * Math.sin(angle);
-        } else {
-          scoreP++;
-          document.getElementById('pScore').textContent = scoreP;
-          reset();
-        }
-      }
+  // --- Reset Ball
+  function resetBall() {
+    let b = state.ball;
+    b.x = WIDTH/2; b.y = HEIGHT/2;
+    b.vx = (Math.random()<0.5?-1:1)*BALL.SPEED;
+    b.vy = (Math.random()<0.5?-1:1)*BALL.SPEED;
+  }
 
-      updateAI();
-      requestAnimationFrame(loop);
-    }
+  // --- End
+  function endMatch() {
+    state.paused = true;
+    audio.stopBgm();
+    const winner = state.score1 > state.score2 ? 1 : 2;
+    new Toast(`Game Over! Player ${winner} wins.`, 4000);
+  }
 
-    function reset(){
-      ball.x = W/2; ball.y = H/2;
-      // random initial direction
-      const sign = Math.random()<0.5 ? 1:-1;
-      const ang  = (Math.random()*2-1)*(Math.PI/4);
-      const spd  = 5;
-      ball.vx = sign*spd*Math.cos(ang);
-      ball.vy =      spd*Math.sin(ang);
-    }
+  // --- Render
+  function render(){
+    ctx.clearRect(0,0,WIDTH,HEIGHT);
+    // Paddles
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, state.p1Y, PADDLE.W, PADDLE.H);
+    ctx.fillRect(WIDTH-PADDLE.W, state.p2Y, PADDLE.W, PADDLE.H);
+    // Ball
+    ctx.beginPath();
+    ctx.arc(state.ball.x, state.ball.y, BALL.R,0,2*Math.PI);
+    ctx.fill();
+    // UI
+    document.getElementById('score1').textContent = state.score1;
+    document.getElementById('score2').textContent = state.score2;
+  }
 
-    // start
-    reset();
-    draw();
-    loop();
-  })();
+  // --- Utilities
+  document.getElementById('backLobby').onclick = () => {
+    audio.stopBgm();
+    location.href = 'index.html';
+  };
+
+  function endMatch() { /* ... same as above ... */ }
+
+  // Start!
+  resetBall();
   </script>
 </body>
 </html>

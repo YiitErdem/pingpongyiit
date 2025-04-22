@@ -1,227 +1,234 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ping Pong</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ping Pong 2P</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body,html{width:100%;height:100%;background:#111;color:#fff;font-family:Arial,sans-serif;overflow:hidden;}
-    header{display:flex;justify-content:space-between;padding:1rem;background:rgba(0,0,0,0.5);}
-    header div{font-size:1.2rem;}
-    .heading{font-size:1.5rem;}
-    .arena {
-      position:relative;width:900px;height:600px;
-      margin:2rem auto;background:#222;border:3px dashed #0ff;
-      touch-action:none;
+    * { box-sizing: border-box; margin:0; padding:0; }
+    body, html {
+      width:100%; height:100%;
+      background: #111;
+      display: flex; justify-content: center; align-items: center;
+      color: #eee; font-family: sans-serif;
     }
-    .player-left-paddle,.player-right-paddle,.ping-pong-ball{
-      position:absolute;border-radius:4px;
-    }
-    .player-left-paddle{width:12px;height:85px;left:0;background:#0ff;}
-    .player-right-paddle{width:12px;height:85px;right:0;background:#f0f;}
-    .ping-pong-ball{width:15px;height:15px;background:#ff0;box-shadow:0 0 8px #ff0;}
-    /* overlay */
-    #overlay {
-      position: absolute;top:0;left:0;width:100%;height:100%;
-      background:rgba(0,0,0,0.7);display:flex;
-      align-items:center;justify-content:center;flex-direction:column;
-      font-size:2rem;z-index:10;
-    }
-    #overlay.hide { display:none; }
-    #overlay button {
-      margin-top:1rem;padding:.5rem 1rem;
-      font-size:1rem;cursor:pointer;
+    canvas {
+      border: 3px dashed #0ff;
+      background: #222;
+      touch-action: none;
     }
   </style>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <header>
-    <div>Player 1: <span id="score1">0</span></div>
-    <div class="heading">PING PONG</div>
-    <div>Player 2: <span id="score2">0</span></div>
-  </header>
-  <div class="arena" id="arena">
-    <div id="paddle1" class="player-left-paddle"></div>
-    <div id="ball"    class="ping-pong-ball"></div>
-    <div id="paddle2" class="player-right-paddle"></div>
-    <div id="overlay">
-      <div id="msg">Waiting for opponent...</div>
-      <button id="readyBtn" disabled>Ready</button>
-    </div>
-  </div>
+  <canvas id="c" width="900" height="600"></canvas>
   <script>
-  // URL params
-  const ps = new URLSearchParams(location.search);
-  const room = ps.get('room'), role = ps.get('role'); // "player1" or "player2"
+  const CANVAS  = document.getElementById('c');
+  const ctx     = CANVAS.getContext('2d');
+  const W       = CANVAS.width, H = CANVAS.height;
+  const PAD_W   = 12, PAD_H = 100;
+  const BALL_R  = 10;
+  const PADDLE_SPEED = 400;        // px/sec
+  const BALL_SPEED0  = 350;        // serve speed
+  const BALL_SPEED_INC = 20;       // on paddle hit
+  const MAX_SCORE = 10;
 
-  // Firebase init
-  const cfg = {
-    apiKey: "AIzaSyASZrCdc3xrJ8iXagE3iMUdhEpPR5FiJOE",
-    authDomain: "masa-tenisi-v1.firebaseapp.com",
-    databaseURL: "https://masa-tenisi-v1-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "masa-tenisi-v1",
+  let paddles = {
+    left:  (H - PAD_H)/2,
+    right: (H - PAD_H)/2
   };
-  firebase.initializeApp(cfg);
-  const db = firebase.database();
-  const paddlesRef = db.ref(`rooms/${room}/paddles`);
-  const ballRef    = db.ref(`rooms/${room}/ball`);
-  const scoreRef   = db.ref(`rooms/${room}/score`);
-  const readyRef   = db.ref(`rooms/${room}/ready`);
+  let ball = { x: W/2, y: H/2, vx:0, vy:0, speed: BALL_SPEED0 };
+  let scores = { left:0, right:0 };
 
-  // constants
-  const AW=900, AH=600, PW=12, PH=85, BR=7.5;
-  const SPEED=300, BALL_SPEED=250;
+  let keys = {};                   // keyboard state
+  let dragging = null;             // 'left'|'right' for mouse/touch
+  let lastTS = 0;
+  let countdown = 3, inCountdown = true;
 
-  // state
-  let paddle={player1:(AH-PH)/2, player2:(AH-PH)/2};
-  let ball={x:AW/2,y:AH/2,vx:0,vy:0};
-  let score={p1:0,p2:0};
-  let keys={};
-  let bothPresent=false, amReady=false, otherReady=false;
-  let physicsStarted=false;
-
-  // UI
-  const ov = document.getElementById('overlay'),
-        msg = document.getElementById('msg'),
-        btn = document.getElementById('readyBtn');
-
-  // write own paddle pos
-  function writePaddle(y){
-    paddlesRef.child(role).set(y);
-  }
-
-  // detect presence of both
-  paddlesRef.on('value', snap=>{
-    const v=snap.val()||{};
-    bothPresent = v.player1!=null && v.player2!=null;
-    btn.disabled = !bothPresent;
-    if(bothPresent){
-      msg.textContent = 'Click Ready';
-    }
-  });
-
-  // ready flags
-  readyRef.child(role).set(false);
-  btn.onclick = ()=>{
-    amReady = true;
-    readyRef.child(role).set(true);
-    msg.textContent = 'Waiting other...';
-    btn.disabled = true;
-  };
-  readyRef.on('value',snap=>{
-    const v=snap.val()||{};
-    otherReady = (role==='player1'? v.player2:v.player1)===true;
-    if(amReady && otherReady && !physicsStarted){
-      startCountdown();
-    }
-  });
-
-  // countdown 3..2..1
-  function startCountdown(){
-    physicsStarted = true;
-    let n=3;
-    msg.textContent = n;
-    const ci = setInterval(()=>{
-      n--;
-      if(n>0) msg.textContent=n;
-      else {
-        clearInterval(ci);
-        ov.classList.add('hide');
-        // only player1 runs physics
-        if(role==='player1') resetBall(), last=performance.now(), requestAnimationFrame(frame);
-      }
-    },1000);
-  }
-
-  // reset ball
+  // UTILS
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
   function resetBall(){
-    ball.x=AW/2; ball.y=AH/2;
-    ball.vx = BALL_SPEED*(Math.random()<.5?1:-1);
-    ball.vy = BALL_SPEED*(Math.random()<.5?1:-1);
-    ballRef.set(ball);
+    ball.x = W/2; ball.y = H/2;
+    ball.speed = BALL_SPEED0;
+    // random angle between ±45° towards last scorer
+    let angle = (Math.random()*Math.PI/4) - (Math.PI/8);
+    let dir = (scores.left > scores.right ? 1 : -1);
+    ball.vx = dir * ball.speed * Math.cos(angle);
+    ball.vy = ball.speed * Math.sin(angle);
+  }
+  // COUNTDOWN
+  function startCountdown(){
+    inCountdown = true;
+    countdown = 3;
+    let iv = setInterval(()=>{
+      countdown--;
+      if(countdown<=0){
+        clearInterval(iv);
+        inCountdown = false;
+        resetBall();
+      }
+    }, 1000);
   }
 
-  // physics loop (only host=player1)
-  let last;
-  function frame(now){
-    const dt=(now-last)/1000; last=now;
-    // read other paddle
-    paddlesRef.child('player2').once('value',s=>{ if(s.exists()) paddle.player2=s.val(); });
-    // update own via keys already in paddle[]
-    paddle.player1 = Math.max(0,Math.min(AH-PH, paddle.player1));
-    paddlesRef.child('player1').set(paddle.player1);
+  // DRAW
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    // center line
+    ctx.strokeStyle = '#444'; ctx.setLineDash([10,10]);
+    ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // paddles
+    ctx.fillStyle = '#0ff';
+    ctx.fillRect(0, paddles.left, PAD_W, PAD_H);
+    ctx.fillStyle = '#f0f';
+    ctx.fillRect(W-PAD_W, paddles.right, PAD_W, PAD_H);
+
     // ball
-    ball.x+=ball.vx*dt; ball.y+=ball.vy*dt;
-    if(ball.y<=BR||ball.y>=AH-BR) ball.vy*=-1;
-    // left
-    if(ball.x<=PW+BR){
-      if(ball.y< paddle.player1||ball.y>paddle.player1+PH){
-        score.p2++; resetBall();
-      } else ball.vx=Math.abs(ball.vx);
+    ctx.fillStyle = '#ff0';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, BALL_R,0,Math.PI*2);
+    ctx.fill();
+
+    // scores
+    ctx.fillStyle = '#eee';
+    ctx.font = '48px monospace';
+    ctx.fillText(scores.left, W/4, 60);
+    ctx.fillText(scores.right, W*3/4, 60);
+
+    // countdown overlay
+    if(inCountdown){
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = '#0ff';
+      ctx.font = '120px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(countdown > 0 ? countdown : 'Go!', W/2, H/2 + 40);
+      ctx.textAlign = 'start';
     }
-    // right
-    if(ball.x>=AW-PW-BR){
-      if(ball.y< paddle.player2||ball.y>paddle.player2+PH){
-        score.p1++; resetBall();
-      } else ball.vx=-Math.abs(ball.vx);
-    }
-    ballRef.set(ball);
-    scoreRef.set(score);
-    requestAnimationFrame(frame);
   }
 
-  // everybody: render + controls
-  function render(){
-    document.getElementById('paddle1').style.top  = paddle.player1+'px';
-    document.getElementById('paddle2').style.top  = paddle.player2+'px';
-    document.getElementById('ball').style.left    = ball.x+'px';
-    document.getElementById('ball').style.top     = ball.y+'px';
-    document.getElementById('score1').textContent=score.p1;
-    document.getElementById('score2').textContent=score.p2;
-  }
+  // UPDATE
+  function update(dt){
+    // paddles: keyboard
+    if(keys['w']) paddles.left  = clamp(paddles.left  - PADDLE_SPEED*dt, 0, H - PAD_H);
+    if(keys['s']) paddles.left  = clamp(paddles.left  + PADDLE_SPEED*dt, 0, H - PAD_H);
+    if(keys['ArrowUp'])   paddles.right = clamp(paddles.right - PADDLE_SPEED*dt, 0, H - PAD_H);
+    if(keys['ArrowDown']) paddles.right = clamp(paddles.right + PADDLE_SPEED*dt, 0, H - PAD_H);
 
-  paddlesRef.child('player1').on('value',s=>{ if(s.exists()) { paddle.player1=s.val(); render(); }});
-  paddlesRef.child('player2').on('value',s=>{ if(s.exists()) { paddle.player2=s.val(); render(); }});
-  ballRef.on('value',s=>{ if(s.exists()) { ball=s.val(); render(); }});
-  scoreRef.on('value',s=>{ if(s.exists()){ score=s.val(); render(); }});
+    // ball movement
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
 
-  // keyboard
-  window.addEventListener('keydown',e=>keys[e.key]=true);
-  window.addEventListener('keyup',  e=>keys[e.key]=false);
-  function keyLoop(){
-    if(physicsStarted){
-      if(role==='player1'){
-        if(keys['w']||keys['ArrowUp'])    paddle.player1-=SPEED/60;
-        if(keys['s']||keys['ArrowDown'])  paddle.player1+=SPEED/60;
+    // top/bottom bounce
+    if(ball.y < BALL_R){ ball.y = BALL_R; ball.vy *= -1; }
+    if(ball.y > H-BALL_R){ ball.y = H-BALL_R; ball.vy *= -1; }
+
+    // left paddle collision
+    if(ball.x - BALL_R < PAD_W){
+      if(ball.y > paddles.left && ball.y < paddles.left + PAD_H){
+        // compute bounce angle
+        let rel = (ball.y - (paddles.left + PAD_H/2)) / (PAD_H/2);
+        let ang = rel * Math.PI/4; // max 45°
+        ball.speed = Math.min(ball.speed + BALL_SPEED_INC, 800);
+        ball.vx =  ball.speed * Math.cos(ang);
+        ball.vy =  ball.speed * Math.sin(ang);
+        ball.x = PAD_W + BALL_R; // prevent sticking
+      } else {
+        // score right
+        scores.right++;
+        if(scores.right >= MAX_SCORE) return gameOver();
+        startCountdown();
       }
-      if(role==='player2'){
-        if(keys['w']||keys['ArrowUp'])    paddle.player2-=SPEED/60;
-        if(keys['s']||keys['ArrowDown'])  paddle.player2+=SPEED/60;
-        paddlesRef.child('player2').set(Math.max(0,Math.min(AH-PH,paddle.player2)));
-      }
-      render();
     }
-    requestAnimationFrame(keyLoop);
-  }
-  keyLoop();
 
-  // pointer (mouse/touch) for own
-  const arena = document.getElementById('arena');
-  arena.addEventListener('pointermove',e=>{
-    if(!physicsStarted) return;
-    const rect=arena.getBoundingClientRect(),
-          y=e.clientY-rect.top-PH/2;
-    const yy=Math.max(0,Math.min(AH-PH,y));
-    paddle[role]=yy;
-    paddlesRef.child(role).set(yy);
+    // right paddle
+    if(ball.x + BALL_R > W - PAD_W){
+      if(ball.y > paddles.right && ball.y < paddles.right + PAD_H){
+        let rel = (ball.y - (paddles.right + PAD_H/2)) / (PAD_H/2);
+        let ang = rel * Math.PI/4;
+        ball.speed = Math.min(ball.speed + BALL_SPEED_INC, 800);
+        ball.vx = -ball.speed * Math.cos(ang);
+        ball.vy =  ball.speed * Math.sin(ang);
+        ball.x = W - PAD_W - BALL_R;
+      } else {
+        scores.left++;
+        if(scores.left >= MAX_SCORE) return gameOver();
+        startCountdown();
+      }
+    }
+  }
+
+  // GAME OVER
+  function gameOver(){
+    inCountdown = true;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#f00';
+    ctx.font = '80px monospace';
+    ctx.textAlign = 'center';
+    let winner = scores.left > scores.right ? 'Left Player' : 'Right Player';
+    ctx.fillText(`${winner} Wins!`, W/2, H/2);
+    // restart after 3s
+    setTimeout(()=>{
+      scores.left = scores.right = 0;
+      startCountdown();
+      lastTS = 0;
+      requestAnimationFrame(loop);
+    }, 3000);
+  }
+
+  // MAIN LOOP
+  function loop(ts){
+    if(!lastTS) lastTS = ts;
+    const dt = (ts - lastTS)/1000;
+    lastTS = ts;
+    if(!inCountdown) update(dt);
+    draw();
+    if(scores.left < MAX_SCORE && scores.right < MAX_SCORE)
+      requestAnimationFrame(loop);
+  }
+
+  // INPUT HANDLERS
+  window.addEventListener('keydown', e=> keys[e.key] = true );
+  window.addEventListener('keyup',   e=> keys[e.key] = false );
+
+  // MOUSE → drag paddle
+  CANVAS.addEventListener('mousedown', e=>{
+    let y = e.offsetY;
+    if(e.offsetX < W/2 && y > paddles.left && y < paddles.left+PAD_H) dragging='left';
+    if(e.offsetX > W/2 && y > paddles.right && y < paddles.right+PAD_H) dragging='right';
   });
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const rect = CANVAS.getBoundingClientRect();
+    let y = e.clientY - rect.top - PAD_H/2;
+    if(dragging==='left')  paddles.left  = clamp(y,0,H-PAD_H);
+    if(dragging==='right') paddles.right = clamp(y,0,H-PAD_H);
+  });
+  window.addEventListener('mouseup', ()=> dragging = null );
 
-  // initialize
-  resetBall();
-  render();
+  // TOUCH → drag
+  CANVAS.addEventListener('touchstart', e=>{
+    e.preventDefault();
+    let t = e.touches[0], rect = CANVAS.getBoundingClientRect();
+    let x = t.clientX - rect.left, y = t.clientY - rect.top;
+    if(x < W/2 && y > paddles.left && y < paddles.left+PAD_H) dragging='left';
+    if(x > W/2 && y > paddles.right && y < paddles.right+PAD_H) dragging='right';
+  }, {passive:false});
+  CANVAS.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    if(!dragging) return;
+    let t = e.touches[0], rect = CANVAS.getBoundingClientRect();
+    let y = t.clientY - rect.top - PAD_H/2;
+    if(dragging==='left')  paddles.left  = clamp(y,0,H-PAD_H);
+    if(dragging==='right') paddles.right = clamp(y,0,H-PAD_H);
+  }, {passive:false});
+  CANVAS.addEventListener('touchend', ()=> dragging = null );
+
+  // START
+  startCountdown();
+  requestAnimationFrame(loop);
+
   </script>
 </body>
 </html>

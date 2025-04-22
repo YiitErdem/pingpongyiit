@@ -5,34 +5,63 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Ping Pong – TOFAŞ CAE</title>
   <style>
-    /* Reset */
-    *{margin:0;padding:0;box-sizing:border-box;}
-    html,body{width:100%;height:100%;background:#000;background-image:url('background.PNG');background-size:cover;background-position:center;color:#0ff;font-family:sans-serif;overflow:hidden;}
-    /* Container */
-    #container{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
-    /* UI */
-    #ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2rem;font-size:1.2rem;z-index:10;}
-    #ui span{white-space:nowrap;text-shadow:0 0 4px #000;}
-    #timer{font-weight:bold;}
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body {
+      width:100%; height:100%;
+      background:#000 url('background.PNG') center/cover no-repeat;
+      color:#0ff; font-family:sans-serif; overflow:hidden;
+    }
+    #container {
+      position:relative; width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+    }
+    /* HUD */
+    #ui {
+      position:absolute; top:8px; left:50%; transform:translateX(-50%);
+      display:flex; gap:1.5rem; font-size:1.2rem; z-index:10;
+      text-shadow:0 0 4px #000;
+    }
+    #timer { font-weight:bold; }
     /* Canvas */
-    #canvas{background:rgba(0,0,0,0.6);border:3px solid #0ff;border-radius:8px;
-            width:90vmin;height:160vmin;max-width:400px;max-height:713px;touch-action:none;}
-    /* Touch‑slider */
-    #touchbar{display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
-              width:80%;height:40px;background:rgba(0,255,255,0.1);border:2px solid #0ff;border-radius:20px;z-index:10;}
-    /* Overlays */
-    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);
-             display:flex;align-items:center;justify-content:center;font-size:3rem;color:#0ff;z-index:20;}
-    #darkness{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;opacity:0;transition:opacity .3s;z-index:5;}
+    #canvas {
+      background:rgba(0,0,0,0.6);
+      border:3px solid #0ff; border-radius:8px;
+      width:90vmin; height:160vmin;
+      max-width:400px; max-height:713px;
+      touch-action:none;
+    }
+    /* Mobile slider */
+    #touchbar {
+      display:none; position:absolute;
+      bottom:100px; left:50%; transform:translateX(-50%);
+      width:80%; height:40px;
+      background:rgba(0,255,255,0.1);
+      border:2px solid #0ff; border-radius:20px;
+      z-index:10;
+    }
+    /* Dark‑out buff effect */
+    #darkness {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      background:#000; opacity:0; transition:opacity .3s; z-index:5;
+    }
+    /* Countdown & end overlay */
+    #overlay {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.9); display:flex;
+      align-items:center; justify-content:center;
+      font-size:3rem; color:#0ff; z-index:20;
+      display:none;
+    }
   </style>
 </head>
 <body>
   <div id="container">
     <div id="ui">
-      <span>🏁 You: <strong id="score1">0</strong></span>
+      <span>👤 You: <strong id="score1">0</strong></span>
       <span id="timer">03:00</span>
       <span>CPU: <strong id="score2">0</strong></span>
     </div>
+
     <canvas id="canvas" width="360" height="640"></canvas>
     <div id="touchbar"></div>
     <div id="darkness"></div>
@@ -40,84 +69,95 @@
   </div>
 
   <script>
-  (()=>{
-    const canvas = document.getElementById('canvas'),
-          ctx    = canvas.getContext('2d'),
-          overlay= document.getElementById('overlay'),
+  (function(){
+    // DOM
+    const canvas   = document.getElementById('canvas'),
+          ctx      = canvas.getContext('2d'),
+          overlay  = document.getElementById('overlay'),
           darkness = document.getElementById('darkness'),
           touchbar = document.getElementById('touchbar'),
-          s1 = document.getElementById('score1'),
-          s2 = document.getElementById('score2'),
-          timerEl = document.getElementById('timer');
+          S1       = document.getElementById('score1'),
+          S2       = document.getElementById('score2'),
+          TIMER    = document.getElementById('timer');
 
-    // Dimensions
+    // Constants
     const W=canvas.width, H=canvas.height;
     const P_W=80, P_H=12, B_R=8;
-    const GAME_TIME=180; let timeLeft=GAME_TIME, timerId;
+    const GAME_SECONDS=180;
+    let timeLeft=GAME_SECONDS, timerInterval;
 
-    // Game state
-    let p1={x:(W-P_W)/2},         // bottom (you)
-        p2={x:(W-P_W)/2},         // top (CPU)
+    // State
+    let p1={x:(W-P_W)/2},   // you at bottom
+        p2={x:(W-P_W)/2},   // CPU at top
         ball={x:W/2,y:H/2,dx:3,dy:3},
         score1=0, score2=0,
-        running=false;
+        running=false,
+        buffs=[], obs=[];
 
-    // Buffs & obstacles
-    let buffs=[], obs=[];
-
-    // --- Countdown & Start ---
+    // Countdown
     function startCountdown(){
-      let c=3; overlay.textContent=c; overlay.style.display='flex';
+      let c=3;
+      overlay.style.display='flex';
+      overlay.textContent=c;
       const iv=setInterval(()=>{
         c--;
         if(c>0) overlay.textContent=c;
-        else{ clearInterval(iv); overlay.style.display='none'; running=true; resetBall(); timerId=setInterval(gameTimer,1000); }
+        else {
+          clearInterval(iv);
+          overlay.style.display='none';
+          running=true;
+          resetBall();
+          timerInterval=setInterval(gameTimer,1000);
+        }
       },1000);
     }
-
-    // --- Timer ---
+    // Game timer
     function gameTimer(){
       timeLeft--;
-      const m=Math.floor(timeLeft/60).toString().padStart(2,'0'),
-            s=(timeLeft%60).toString().padStart(2,'0');
-      timerEl.textContent=`${m}:${s}`;
+      const m=String(Math.floor(timeLeft/60)).padStart(2,'0'),
+            s=String(timeLeft%60).padStart(2,'0');
+      TIMER.textContent=`${m}:${s}`;
       if(timeLeft<=0) endGame();
     }
-
+    // End
     function endGame(){
-      running=false; clearInterval(timerId);
+      running=false; clearInterval(timerInterval);
       overlay.style.display='flex';
-      overlay.textContent = score1>score2?'You Win!':'CPU Wins';
+      overlay.textContent = score1>score2 ? 'You Win!' : 'CPU Wins!';
     }
 
-    // --- Ball Reset ---
+    // Reset ball to center with random direction
     function resetBall(){
       ball.x=W/2; ball.y=H/2;
       ball.dx=3*(Math.random()<.5?1:-1);
       ball.dy=3*(Math.random()<.5?1:-1);
     }
 
-    // --- Spawn Buff ---
+    // Buffs & obstacles
     function spawnBuff(){
-      const types=['double','shrink','speed','dark'];
+      const types=['speed','double','dark'];
       buffs.push({
         x:Math.random()*(W-20)+10,
         y:Math.random()*(H-200)+100,
-        r:10, type:types[Math.floor(Math.random()*types.length)], used:false
+        r:10,
+        type: types[~~(Math.random()*types.length)],
+        used:false
       });
     }
-
-    // --- Spawn Obstacle ---
     function spawnObs(){
-      obs.push({x:Math.random()*(W-50),y:Math.random()*(H-200)+100,w:30,h:30,ttl:180});
+      obs.push({
+        x:Math.random()*(W-50),
+        y:Math.random()*(H-200)+100,
+        w:30,h:30,ttl:180
+      });
     }
-
-    // --- Apply Buff ---
     function applyBuff(b){
       switch(b.type){
-        case 'double': ball.dx*=1.5; ball.dy*=1.5; break;
-        case 'shrink': p1.x=Math.max(0,p1.x); p2.x=p2.x; /* only paddle width changes */ canvas.P_W*=0.7; break;
-        case 'speed': ball.dx*=2; ball.dy*=2; break;
+        case 'speed':
+          ball.dx*=1.5; ball.dy*=1.5; break;
+        case 'double':
+          buffs.push({...b,used:false,r:10,type:'speed'}); // chain spawn speed buff
+          break;
         case 'dark':
           darkness.style.opacity=0.8;
           setTimeout(()=>darkness.style.opacity=0,5000);
@@ -125,64 +165,58 @@
       }
     }
 
-    // --- AI Move ---
+    // Simple AI follows ball
     function aiMove(){
-      const target = ball.x - P_W/2;
-      if(target>p2.x+2) p2.x+=2;
-      else if(target<p2.x-2) p2.x-=2;
-      p2.x=Math.max(0,Math.min(W-P_W,p2.x));
+      const tgt=ball.x-P_W/2;
+      if(tgt>p2.x+2) p2.x+=2;
+      else if(tgt<p2.x-2) p2.x-=2;
+      p2.x = Math.max(0,Math.min(W-P_W,p2.x));
     }
 
-    // --- Update Loop ---
+    // Main update
     function update(){
+      requestAnimationFrame(update);
       if(!running) return;
+
       aiMove();
+      ball.x += ball.dx;
+      ball.y += ball.dy;
 
-      // move ball
-      ball.x+=ball.dx; ball.y+=ball.dy;
-
-      // side walls
+      // walls
       if(ball.x< B_R||ball.x>W-B_R) ball.dx*=-1;
 
-      // top paddle collision
+      // paddle collisions
       if(ball.y< P_H+B_R){
         if(ball.x>p2.x && ball.x<p2.x+P_W){
-          ball.dy*=-1; // speed up on hit
-          ball.dx*=1.02; ball.dy*=1.02;
-        } else {
-          score1++; s1.textContent=score1; resetBall();
-        }
+          ball.dy*=-1; ball.dx*=1.02; ball.dy*=1.02;
+        } else { score1++; S1.textContent=score1; resetBall(); }
       }
-      // bottom paddle
       if(ball.y> H-P_H-B_R){
         if(ball.x>p1.x && ball.x<p1.x+P_W){
           ball.dy*=-1; ball.dx*=1.02; ball.dy*=1.02;
-        } else {
-          score2++; s2.textContent=score2; resetBall();
-        }
+        } else { score2++; S2.textContent=score2; resetBall(); }
       }
 
-      // buffs
+      // buff collisions
       buffs.forEach(b=>{
         if(!b.used && Math.hypot(ball.x-b.x,ball.y-b.y)<B_R+b.r){
           b.used=true; applyBuff(b);
         }
       });
-      buffs=buffs.filter(b=>!b.used);
+      buffs = buffs.filter(b=>!b.used);
 
-      // obstacles
+      // obstacles TTL
       obs.forEach(o=>o.ttl--);
-      obs=obs.filter(o=>o.ttl>0);
+      obs = obs.filter(o=>o.ttl>0);
 
       // random spawns
       if(Math.random()<.005) spawnBuff();
       if(Math.random()<.002) spawnObs();
 
       draw();
-      requestAnimationFrame(update);
     }
 
-    // --- Draw ---
+    // Rendering
     function draw(){
       ctx.clearRect(0,0,W,H);
 
@@ -190,14 +224,14 @@
       ctx.save();
       ctx.globalAlpha=0.1;
       ctx.fillStyle='#0ff';
-      ctx.font='30px sans-serif';
-      ctx.fillText('TOFAŞ CAE', W/2-80,H/2);
+      ctx.font='24px sans-serif';
+      ctx.fillText('TOFAŞ CAE',W/2-60,H/2);
       ctx.restore();
 
       // paddles
       ctx.fillStyle='#0ff';
-      ctx.fillRect(p2.x,0,P_W,P_H);
-      ctx.fillRect(p1.x,H-P_H,P_W,P_H);
+      ctx.fillRect( p2.x, 0, P_W,P_H );
+      ctx.fillRect( p1.x, H-P_H, P_W,P_H );
 
       // ball
       ctx.fillStyle='#ff0';
@@ -207,9 +241,7 @@
 
       // buffs
       buffs.forEach(b=>{
-        ctx.fillStyle = b.type==='speed'? '#f00':
-                        b.type==='double'? '#f0f':
-                        b.type==='dark'? '#555': '#0f0';
+        ctx.fillStyle = {speed:'#f00',double:'#f0f',dark:'#555'}[b.type];
         ctx.beginPath();
         ctx.arc(b.x,b.y,b.r,0,2*Math.PI);
         ctx.fill();
@@ -220,41 +252,38 @@
       obs.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
     }
 
-    // --- Controls ---
+    // Player controls
     function setupControls(){
-      // touch
       if('ontouchstart' in window){
         touchbar.style.display='block';
-        let drag=false;
-        touchbar.addEventListener('pointerdown',()=>drag=true);
-        touchbar.addEventListener('pointerup',  ()=>drag=false);
+        let dragging=false;
+        touchbar.addEventListener('pointerdown',()=>dragging=true);
+        touchbar.addEventListener('pointerup',()=>dragging=false);
         touchbar.addEventListener('pointermove',e=>{
-          if(!drag) return;
+          if(!dragging) return;
           const pct=(e.clientX-touchbar.getBoundingClientRect().left)/touchbar.clientWidth;
-          p1.x=pct*(W-P_W);
+          p1.x = pct*(W-P_W);
         });
       } else {
-        // mouse
         canvas.style.cursor='none';
         canvas.addEventListener('mousemove',e=>{
           const r=canvas.getBoundingClientRect(),
                 pct=(e.clientX-r.left)/r.width;
-          p1.x=pct*(W-P_W);
+          p1.x = pct*(W-P_W);
         });
       }
-      // keyboard
       window.addEventListener('keydown',e=>{
-        if(e.key==='ArrowLeft'||e.key==='a') p1.x-=5;
-        if(e.key==='ArrowRight'||e.key==='d')p1.x+=5;
-        p1.x=Math.max(0,Math.min(W-P_W,p1.x));
+        if(e.key==='a'||e.key==='ArrowLeft') p1.x-=5;
+        if(e.key==='d'||e.key==='ArrowRight')p1.x+=5;
+        p1.x = Math.max(0,Math.min(W-P_W,p1.x));
       });
     }
 
-    // --- Init ---
+    // Bootstrap
     setupControls();
     startCountdown();
     draw();
-    setTimeout(update,100);
+    requestAnimationFrame(update);
   })();
   </script>
 </body>

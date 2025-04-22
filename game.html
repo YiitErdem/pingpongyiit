@@ -3,36 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Ping Pong – Neon Dark</title>
+  <title>Ping Pong – TOFAŞ CAE</title>
   <style>
-    /* base resets */
-    * { margin:0; padding:0; box-sizing:border-box; }
-    html, body { width:100%; height:100%; overflow:hidden; background:#000; color:#0ff; font-family:sans-serif; }
-    button { background:#0ff; color:#000; border:none; padding:.5em 1em; border-radius:4px; cursor:pointer; }
-    /* container */
-    #container { position:relative; width:100vw; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-    /* header UI */
-    #ui { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:2rem; font-size:1.2rem; z-index:10; }
-    #ui span { white-space:nowrap; }
-    #timer { font-weight:bold; }
-    /* canvas */
-    #canvas { background:#111; border:3px solid #0ff; border-radius:8px; touch-action:none; }
-    /* touch controls */
-    #touchbar { display:none; position:absolute; bottom:20px; left:50%; transform:translateX(-50%); width:80%; height:40px;
-                background:rgba(0,255,255,0.1); border:2px solid #0ff; border-radius:20px; }
-    /* overlays */
-    #overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9);
-               display:flex; align-items:center; justify-content:center; font-size:3rem; z-index:20; color:#0ff; }
-    /* darkness buff overlay */
-    #darkness { position:absolute; top:0; left:0; width:100%; height:100%; background:#000; opacity:0; transition:opacity .3s; z-index:5; }
+    /* Reset */
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{width:100%;height:100%;background:#000;background-image:url('background.PNG');background-size:cover;background-position:center;color:#0ff;font-family:sans-serif;overflow:hidden;}
+    /* Container */
+    #container{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+    /* UI */
+    #ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2rem;font-size:1.2rem;z-index:10;}
+    #ui span{white-space:nowrap;text-shadow:0 0 4px #000;}
+    #timer{font-weight:bold;}
+    /* Canvas */
+    #canvas{background:rgba(0,0,0,0.6);border:3px solid #0ff;border-radius:8px;
+            width:90vmin;height:160vmin;max-width:400px;max-height:713px;touch-action:none;}
+    /* Touch‑slider */
+    #touchbar{display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+              width:80%;height:40px;background:rgba(0,255,255,0.1);border:2px solid #0ff;border-radius:20px;z-index:10;}
+    /* Overlays */
+    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);
+             display:flex;align-items:center;justify-content:center;font-size:3rem;color:#0ff;z-index:20;}
+    #darkness{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;opacity:0;transition:opacity .3s;z-index:5;}
   </style>
 </head>
 <body>
   <div id="container">
     <div id="ui">
-      <span>Score You: <strong id="score1">0</strong></span>
+      <span>🏁 You: <strong id="score1">0</strong></span>
       <span id="timer">03:00</span>
-      <span>Score CPU: <strong id="score2">0</strong></span>
+      <span>CPU: <strong id="score2">0</strong></span>
     </div>
     <canvas id="canvas" width="360" height="640"></canvas>
     <div id="touchbar"></div>
@@ -47,245 +46,215 @@
           overlay= document.getElementById('overlay'),
           darkness = document.getElementById('darkness'),
           touchbar = document.getElementById('touchbar'),
-          score1El = document.getElementById('score1'),
-          score2El = document.getElementById('score2'),
-          timerEl  = document.getElementById('timer');
+          s1 = document.getElementById('score1'),
+          s2 = document.getElementById('score2'),
+          timerEl = document.getElementById('timer');
 
-    // game constants
-    const W = canvas.width, H = canvas.height;
-    const P_W = 12, P_H = 60, B_R=6;
-    const GAME_TIME = 180;         // seconds
-    let timeLeft = GAME_TIME, timerId;
+    // Dimensions
+    const W=canvas.width, H=canvas.height;
+    const P_W=80, P_H=12, B_R=8;
+    const GAME_TIME=180; let timeLeft=GAME_TIME, timerId;
 
-    // state
-    let p1 = { y:(H-P_H)/2 },       // player paddle (bottom)
-        p2 = { y:(H-P_H)/2 },       // CPU paddle (top)
-        ball={ x:W/2, y:H/2, dx:2, dy:2 },
+    // Game state
+    let p1={x:(W-P_W)/2},         // bottom (you)
+        p2={x:(W-P_W)/2},         // top (CPU)
+        ball={x:W/2,y:H/2,dx:3,dy:3},
         score1=0, score2=0,
         running=false;
 
-    // buffs & obstacles
-    let buffs = [], obstacles = [];
+    // Buffs & obstacles
+    let buffs=[], obs=[];
 
-    // control mode
-    let ctrl='auto'; // 'mouse','touch','key','auto'
-    let dragging=false;
-
-    // audio stubs (implement as you like)
-    const SFX = { paddle:()=>{}, wall:()=>{}, score:()=>{}, buff:()=>{}, win:()=>{} };
-
-    // init
-    function resetBall(){
-      ball.x=W/2; ball.y=H/2;
-      ball.dx=2*(Math.random()<.5?1:-1);
-      ball.dy=2*(Math.random()<.5?1:-1);
-    }
-
-    // spawn a random buff
-    function spawnBuff(){
-      const types = ['double','shrink','speed','dark'];
-      const t = types[Math.floor(Math.random()*types.length)];
-      buffs.push({
-        x: Math.random()*(W-20)+10,
-        y: Math.random()*(H-200)+100,
-        r:8, type:t, used:false
-      });
-    }
-    // spawn obstacle
-    function spawnObs(){
-      obstacles.push({
-        x:W/2-15, y:H/2-30,
-        w:30, h:30, ttl:180
-      });
-    }
-
-    // apply buff
-    function applyBuff(b){
-      SFX.buff();
-      switch(b.type){
-        case 'double':
-          // create second ball
-          // for brevity, just speed up
-          ball.dx*=1.5; ball.dy*=1.5;
-          break;
-        case 'shrink':
-          P_H *=0.7; break;
-        case 'speed':
-          ball.dx*=2; ball.dy*=2; break;
-        case 'dark':
-          darkness.style.opacity=0.8;
-          setTimeout(()=> darkness.style.opacity=0,5000);
-          break;
-      }
-    }
-
-    // start countdown
+    // --- Countdown & Start ---
     function startCountdown(){
       let c=3; overlay.textContent=c; overlay.style.display='flex';
-      const iv = setInterval(()=>{
+      const iv=setInterval(()=>{
         c--;
         if(c>0) overlay.textContent=c;
-        else {
-          clearInterval(iv);
-          overlay.style.display='none';
-          running=true;
-          resetBall();
-          timerId = setInterval(gameTimer,1000);
-        }
+        else{ clearInterval(iv); overlay.style.display='none'; running=true; resetBall(); timerId=setInterval(gameTimer,1000); }
       },1000);
     }
 
-    // game timer
+    // --- Timer ---
     function gameTimer(){
       timeLeft--;
-      const m = Math.floor(timeLeft/60).toString().padStart(2,'0'),
-            s = (timeLeft%60).toString().padStart(2,'0');
+      const m=Math.floor(timeLeft/60).toString().padStart(2,'0'),
+            s=(timeLeft%60).toString().padStart(2,'0');
       timerEl.textContent=`${m}:${s}`;
       if(timeLeft<=0) endGame();
     }
 
-    // end game
     function endGame(){
-      running=false;
-      clearInterval(timerId);
+      running=false; clearInterval(timerId);
       overlay.style.display='flex';
       overlay.textContent = score1>score2?'You Win!':'CPU Wins';
-      SFX.win();
     }
 
-    // draw everything
+    // --- Ball Reset ---
+    function resetBall(){
+      ball.x=W/2; ball.y=H/2;
+      ball.dx=3*(Math.random()<.5?1:-1);
+      ball.dy=3*(Math.random()<.5?1:-1);
+    }
+
+    // --- Spawn Buff ---
+    function spawnBuff(){
+      const types=['double','shrink','speed','dark'];
+      buffs.push({
+        x:Math.random()*(W-20)+10,
+        y:Math.random()*(H-200)+100,
+        r:10, type:types[Math.floor(Math.random()*types.length)], used:false
+      });
+    }
+
+    // --- Spawn Obstacle ---
+    function spawnObs(){
+      obs.push({x:Math.random()*(W-50),y:Math.random()*(H-200)+100,w:30,h:30,ttl:180});
+    }
+
+    // --- Apply Buff ---
+    function applyBuff(b){
+      switch(b.type){
+        case 'double': ball.dx*=1.5; ball.dy*=1.5; break;
+        case 'shrink': p1.x=Math.max(0,p1.x); p2.x=p2.x; /* only paddle width changes */ canvas.P_W*=0.7; break;
+        case 'speed': ball.dx*=2; ball.dy*=2; break;
+        case 'dark':
+          darkness.style.opacity=0.8;
+          setTimeout(()=>darkness.style.opacity=0,5000);
+          break;
+      }
+    }
+
+    // --- AI Move ---
+    function aiMove(){
+      const target = ball.x - P_W/2;
+      if(target>p2.x+2) p2.x+=2;
+      else if(target<p2.x-2) p2.x-=2;
+      p2.x=Math.max(0,Math.min(W-P_W,p2.x));
+    }
+
+    // --- Update Loop ---
+    function update(){
+      if(!running) return;
+      aiMove();
+
+      // move ball
+      ball.x+=ball.dx; ball.y+=ball.dy;
+
+      // side walls
+      if(ball.x< B_R||ball.x>W-B_R) ball.dx*=-1;
+
+      // top paddle collision
+      if(ball.y< P_H+B_R){
+        if(ball.x>p2.x && ball.x<p2.x+P_W){
+          ball.dy*=-1; // speed up on hit
+          ball.dx*=1.02; ball.dy*=1.02;
+        } else {
+          score1++; s1.textContent=score1; resetBall();
+        }
+      }
+      // bottom paddle
+      if(ball.y> H-P_H-B_R){
+        if(ball.x>p1.x && ball.x<p1.x+P_W){
+          ball.dy*=-1; ball.dx*=1.02; ball.dy*=1.02;
+        } else {
+          score2++; s2.textContent=score2; resetBall();
+        }
+      }
+
+      // buffs
+      buffs.forEach(b=>{
+        if(!b.used && Math.hypot(ball.x-b.x,ball.y-b.y)<B_R+b.r){
+          b.used=true; applyBuff(b);
+        }
+      });
+      buffs=buffs.filter(b=>!b.used);
+
+      // obstacles
+      obs.forEach(o=>o.ttl--);
+      obs=obs.filter(o=>o.ttl>0);
+
+      // random spawns
+      if(Math.random()<.005) spawnBuff();
+      if(Math.random()<.002) spawnObs();
+
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    // --- Draw ---
     function draw(){
       ctx.clearRect(0,0,W,H);
+
+      // watermark
+      ctx.save();
+      ctx.globalAlpha=0.1;
+      ctx.fillStyle='#0ff';
+      ctx.font='30px sans-serif';
+      ctx.fillText('TOFAŞ CAE', W/2-80,H/2);
+      ctx.restore();
+
       // paddles
       ctx.fillStyle='#0ff';
-      // top
-      ctx.fillRect(0,p2.y,P_W,P_H);
-      // bottom
-      ctx.fillRect(W-P_W,p1.y,P_W,P_H);
+      ctx.fillRect(p2.x,0,P_W,P_H);
+      ctx.fillRect(p1.x,H-P_H,P_W,P_H);
+
       // ball
       ctx.fillStyle='#ff0';
       ctx.beginPath();
       ctx.arc(ball.x,ball.y,B_R,0,2*Math.PI);
       ctx.fill();
+
       // buffs
       buffs.forEach(b=>{
-        if(!b.used){
-          ctx.fillStyle=b.type==='double'? '#f0f':'#f00';
-          ctx.beginPath();
-          ctx.arc(b.x,b.y,b.r,0,2*Math.PI);
-          ctx.fill();
-        }
+        ctx.fillStyle = b.type==='speed'? '#f00':
+                        b.type==='double'? '#f0f':
+                        b.type==='dark'? '#555': '#0f0';
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,b.r,0,2*Math.PI);
+        ctx.fill();
       });
+
       // obstacles
       ctx.fillStyle='#555';
-      obstacles.forEach(o=>{
-        ctx.fillRect(o.x,o.y,o.w,o.h);
-      });
-      if(running) requestAnimationFrame(update);
+      obs.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
     }
 
-    // AI move
-    function aiMove(){
-      // simple predictive: follow ball.x
-      const centre = ball.x - P_H/2;
-      if(centre>p2.y+2) p2.y +=1.5;
-      else if(centre<p2.y-2) p2.y -=1.5;
-      p2.y = Math.max(0,Math.min(H-P_H,p2.y));
-    }
-
-    // main update loop
-    function update(){
-      // move paddles
-      // player: already set via controls into p1.y
-
-      aiMove();
-
-      // move ball
-      ball.x += ball.dx;
-      ball.y += ball.dy;
-
-      // wall bounce
-      if(ball.x< B_R || ball.x> W-B_R){
-        ball.dx*=-1; SFX.wall();
-      }
-      // top paddle
-      if(ball.y< P_H+B_R){
-        if(ball.x>0 && ball.x<P_W){
-          ball.dy*=-1; SFX.paddle();
-        } else {
-          score1++;
-          score1El.textContent=score1;
-          SFX.score();
-          resetBall();
-        }
-      }
-      // bottom paddle
-      if(ball.y> H-P_H-B_R){
-        if(ball.x>W-P_W && ball.x<W){
-          ball.dy*=-1; SFX.paddle();
-        } else {
-          score2++;
-          score2El.textContent=score2;
-          SFX.score();
-          resetBall();
-        }
-      }
-
-      // buff collisions
-      buffs.forEach(b=>{
-        if(!b.used && Math.hypot(ball.x-b.x,ball.y-b.y)<B_R+b.r){
-          b.used=true;
-          applyBuff(b);
-        }
-      });
-      // remove used buffs
-      buffs = buffs.filter(b=>!b.used);
-
-      // obstacle TTL
-      obstacles.forEach(o=> o.ttl--);
-      obstacles = obstacles.filter(o=> o.ttl>0);
-
-      // occasionally spawn
-      if(Math.random()<.005) spawnBuff();
-      if(Math.random()<.002) spawnObs();
-
-      // draw
-      draw();
-    }
-
-    // input setup
+    // --- Controls ---
     function setupControls(){
+      // touch
       if('ontouchstart' in window){
-        ctrl='touch';
         touchbar.style.display='block';
-        touchbar.addEventListener('pointerdown',()=>dragging=true);
-        touchbar.addEventListener('pointerup',()=>dragging=false);
+        let drag=false;
+        touchbar.addEventListener('pointerdown',()=>drag=true);
+        touchbar.addEventListener('pointerup',  ()=>drag=false);
         touchbar.addEventListener('pointermove',e=>{
-          if(!dragging)return;
-          const pct = (e.clientX - touchbar.getBoundingClientRect().left)/touchbar.clientWidth;
-          p1.y = pct*(H-P_H);
+          if(!drag) return;
+          const pct=(e.clientX-touchbar.getBoundingClientRect().left)/touchbar.clientWidth;
+          p1.x=pct*(W-P_W);
         });
       } else {
-        ctrl='mouse';
+        // mouse
         canvas.style.cursor='none';
         canvas.addEventListener('mousemove',e=>{
-          const r=canvas.getBoundingClientRect();
-          const pct = (e.clientX-r.left)/r.width;
-          p1.y = pct*(H-P_H);
+          const r=canvas.getBoundingClientRect(),
+                pct=(e.clientX-r.left)/r.width;
+          p1.x=pct*(W-P_W);
         });
       }
-      // keyboard fallback
+      // keyboard
       window.addEventListener('keydown',e=>{
-        if(e.key==='ArrowLeft'||e.key==='a') p1.y-=5;
-        if(e.key==='ArrowRight'||e.key==='d') p1.y+=5;
-        p1.y = Math.max(0,Math.min(H-P_H,p1.y));
+        if(e.key==='ArrowLeft'||e.key==='a') p1.x-=5;
+        if(e.key==='ArrowRight'||e.key==='d')p1.x+=5;
+        p1.x=Math.max(0,Math.min(W-P_W,p1.x));
       });
     }
 
-    // start
+    // --- Init ---
     setupControls();
     startCountdown();
     draw();
+    setTimeout(update,100);
   })();
   </script>
 </body>
